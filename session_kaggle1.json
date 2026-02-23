@@ -1,17 +1,17 @@
 {
   "metadata": {
     "account_name": "kaggle1",
-    "session_date": "2026-02-23T22:15:54.446746",
-    "duration_minutes": 4.076403693358103,
+    "session_date": "2026-02-23T22:48:32.996958",
+    "duration_minutes": 4.028425673643748,
     "phase": "phase_1_human_teacher",
     "difficulty": "easy",
     "total_games_ever": 1
   },
   "session_stats": {
     "account_name": "kaggle1",
-    "start_time": 1771884709.859974,
-    "end_time": 1771884954.4441955,
-    "duration_minutes": 4.076403693358103,
+    "start_time": 1771886671.2885442,
+    "end_time": 1771886912.9940846,
+    "duration_minutes": 4.028425673643748,
     "games_played": 1,
     "games_won": 0,
     "games_lost": 1,
@@ -19,13 +19,13 @@
     "total_moves": 200,
     "total_random_moves": 0,
     "total_smart_moves": 0,
-    "total_reward": -60.0,
-    "avg_reward": -60.0,
-    "best_game_reward": -60.0,
-    "worst_game_reward": -60.0,
+    "total_reward": 40.0,
+    "avg_reward": 40.0,
+    "best_game_reward": 40.0,
+    "worst_game_reward": 40.0,
     "best_territory": 0.0,
     "reward_per_game": [
-      -60.0
+      40.0
     ],
     "territory_per_game": [
       0.0
@@ -47,11 +47,11 @@
         "game_id": 1,
         "won": false,
         "moves": 200,
-        "total_reward": -60.0,
+        "total_reward": 40.0,
         "final_territory": 0.0,
         "difficulty": "easy",
         "phase": "phase_1_human_teacher",
-        "timestamp": 1771884954.3744507
+        "timestamp": 1771886912.926835
       }
     ]
   },
@@ -110,5 +110,5 @@
     "map_position": 0.0,
     "aggression_balance": 0.0
   },
-  "last_updated": 1771884954.4468048
+  "last_updated": 1771886912.997015
 }
