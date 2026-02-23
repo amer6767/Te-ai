@@ -254,7 +254,7 @@ def run_session(account_name: str, num_games: int = DEFAULT_GAMES,
     print(f"\n🎮 Step 4: Running {num_games} games...")
 
     from trainer import SessionTrainer
-    trainer = SessionTrainer(account_name=account_name)
+    trainer = SessionTrainer(account_name=account_name, use_real_game=use_real_game)
 
     # If we loaded master weights, apply them
     if os.path.exists("models/master_model.pth"):

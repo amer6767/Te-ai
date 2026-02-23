@@ -31,6 +31,8 @@ import argparse
 import traceback
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+import asyncio
+from playwright.async_api import async_playwright
 
 import numpy as np
 import torch
@@ -74,6 +76,38 @@ from curriculum import (
     Difficulty,          # Easy, Medium, Hard
     UnratedMove          # Moves human missed rating
 )
+
+from game_environment import TerritorialEnvironment
+
+
+# ==============================================================================
+# 🌉 ASYNC BRIDGE FOR REAL GAME
+# ==============================================================================
+
+class RealGameBridge:
+    """Wraps the async TerritorialEnvironment so the sync trainer can use it."""
+    
+    def __init__(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        
+        # Start playwright and browser in the event loop
+        self.playwright = self.loop.run_until_complete(async_playwright().start())
+        self.browser = self.loop.run_until_complete(
+            self.playwright.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        )
+        self.env = TerritorialEnvironment(self.browser)
+        
+    def reset(self):
+        return self.loop.run_until_complete(self.env.reset())
+        
+    def step(self, action):
+        return self.loop.run_until_complete(self.env.step(action))
+        
+    def close(self):
+        self.loop.run_until_complete(self.env.close())
+        self.loop.run_until_complete(self.playwright.stop())
+        self.loop.close()
 
 
 # ==============================================================================
@@ -307,6 +341,8 @@ class GameRunner:
         agent: GameAgent,
         curriculum: CurriculumManager,
         game_id: int,
+        use_real_game: bool = False,
+        real_env = None,
         verbose: bool = True
     ):
         """
@@ -316,11 +352,15 @@ class GameRunner:
             agent:      The trained GameAgent from brain.py
             curriculum: The curriculum manager for settings
             game_id:    Unique ID for this game
+            use_real_game: Whether to use the real playwright env
+            real_env:   The RealGameBridge instance
             verbose:    Print move-by-move updates
         """
         self.agent = agent
         self.curriculum = curriculum
         self.game_id = game_id
+        self.use_real_game = use_real_game
+        self.real_env = real_env
         self.verbose = verbose
         
         # --- Get training config for current phase/difficulty ---
@@ -339,13 +379,16 @@ class GameRunner:
         self.total_reward = 0.0
         self.unrated_moves: List[UnratedMove] = []
     
-    def _create_environment(self) -> FakeGameEnvironment:
+    def _create_environment(self):
         """
         Create a game environment matching the current difficulty.
         
         In a real setup, this would connect to the actual game.
         For now, it uses the FakeGameEnvironment with different settings.
         """
+        if self.use_real_game and self.real_env:
+            return self.real_env
+
         difficulty = self.config["difficulty"]
         
         if difficulty == "easy":
@@ -571,16 +614,23 @@ class SessionTrainer:
         trainer.run_session(num_games=10)
     """
     
-    def __init__(self, account_name: str = "default"):
+    def __init__(self, account_name: str = "default", use_real_game: bool = False):
         """
         Initialize the session trainer.
         
         Args:
             account_name: Name for this training account
                          Used in save file: session_<account>.json
+            use_real_game: Whether to use the real Playwright environment
         """
         self.account_name = account_name
         self.stats = SessionStats(account_name)
+        self.use_real_game = use_real_game
+        
+        self.real_env = None
+        if self.use_real_game:
+            print("\n🌐 Initializing Playwright browser (RealGameBridge)...")
+            self.real_env = RealGameBridge()
         
         # --- Create directories ---
         os.makedirs(SessionConfig.SESSION_DIR, exist_ok=True)
@@ -659,6 +709,8 @@ class SessionTrainer:
                     agent=self.agent,
                     curriculum=self.curriculum,
                     game_id=game_id,
+                    use_real_game=self.use_real_game,
+                    real_env=self.real_env,
                     verbose=SessionConfig.VERBOSE
                 )
                 
@@ -714,6 +766,13 @@ class SessionTrainer:
         Finish the session: save everything, print summary.
         Called automatically after all games are played.
         """
+        if self.real_env:
+            print("\n🌐 Closing Playwright browser...")
+            try:
+                self.real_env.close()
+            except Exception as e:
+                print(f"⚠️ Error closing browser: {e}")
+
         print(f"\n{'='*60}")
         print(f"✅ SESSION COMPLETE!")
         print(f"{'='*60}")
