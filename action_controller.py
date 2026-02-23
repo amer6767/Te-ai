@@ -35,12 +35,12 @@ import time
 DEFAULT_VIEWPORT_WIDTH = 1280
 DEFAULT_VIEWPORT_HEIGHT = 900
 
-# Game area mapping (where the map actually is in the browser)
+# Game area mapping — centered around spawn point (640, 450)
 # Used to translate normalized (0-1) coordinates to pixel coordinates
-GAME_AREA_X_START = 200    # Leftmost pixel of game map
-GAME_AREA_X_END = 1080     # Rightmost pixel of game map
-GAME_AREA_Y_START = 100    # Top pixel of game map
-GAME_AREA_Y_END = 800      # Bottom pixel of game map
+GAME_AREA_X_CENTER = 640
+GAME_AREA_Y_CENTER = 450
+GAME_AREA_X_RADIUS = 400   # ±400 pixels from center
+GAME_AREA_Y_RADIUS = 300   # ±300 pixels from center
 
 # Safety stop threshold: if territory drops this much, pause
 SAFETY_DROP_THRESHOLD = 0.15   # 15% territory drop in one step
@@ -165,9 +165,9 @@ class ActionController:
 
         elif action_type == "expand":
             await set_slider(self.page, slider_pct)
-            # Click a random point in the game area to expand into
-            expand_x = random.randint(GAME_AREA_X_START + 50, GAME_AREA_X_END - 50)
-            expand_y = random.randint(GAME_AREA_Y_START + 50, GAME_AREA_Y_END - 50)
+            # Click a random point centered around our base
+            expand_x = random.randint(GAME_AREA_X_CENTER - 200, GAME_AREA_X_CENTER + 200)
+            expand_y = random.randint(GAME_AREA_Y_CENTER - 200, GAME_AREA_Y_CENTER + 200)
             await self.page.mouse.click(expand_x, expand_y)
             result["pixel_x"] = expand_x
             result["pixel_y"] = expand_y
@@ -221,7 +221,7 @@ class ActionController:
     def _translate_coordinates(self, norm_x: float, norm_y: float) -> tuple:
         """
         Translate normalized (0-1) coordinates to pixel coordinates
-        within the game area.
+        centered around the base at (640, 450).
         
         Args:
             norm_x: Normalized X coordinate (0.0 to 1.0)
@@ -234,12 +234,9 @@ class ActionController:
         norm_x = max(0.0, min(1.0, norm_x))
         norm_y = max(0.0, min(1.0, norm_y))
 
-        # Map to game area pixel coordinates
-        game_width = GAME_AREA_X_END - GAME_AREA_X_START
-        game_height = GAME_AREA_Y_END - GAME_AREA_Y_START
-
-        pixel_x = int(GAME_AREA_X_START + norm_x * game_width)
-        pixel_y = int(GAME_AREA_Y_START + norm_y * game_height)
+        # Map normalized [0,1] to centered pixel coordinates
+        pixel_x = int(GAME_AREA_X_CENTER + (norm_x - 0.5) * 2 * GAME_AREA_X_RADIUS)
+        pixel_y = int(GAME_AREA_Y_CENTER + (norm_y - 0.5) * 2 * GAME_AREA_Y_RADIUS)
 
         return pixel_x, pixel_y
 

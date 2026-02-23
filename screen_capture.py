@@ -116,6 +116,7 @@ class ScreenCapture:
                 territory_pct: float — estimated player territory percentage (0.0–1.0)
                 num_players:   int — estimated number of distinct players
                 game_area:     PIL Image — cropped to game map only
+                smart_targets: list — valid (x, y) click targets from border analysis
         """
         self._frame_count += 1
 
@@ -137,12 +138,16 @@ class ScreenCapture:
         # Step 5: Estimate number of players from distinct colors
         num_players = self._estimate_players(game_area)
 
+        # Step 6: Find smart click targets (neutral + enemy borders)
+        smart_targets = self.get_smart_click_targets(game_area)
+
         return {
             "raw_image": raw_image,
             "tensor": tensor,
             "territory_pct": territory_pct,
             "num_players": num_players,
             "game_area": game_area,
+            "smart_targets": smart_targets,
         }
 
     def _crop_game_area(self, image: Image.Image) -> Image.Image:
@@ -281,6 +286,70 @@ class ScreenCapture:
             return 0.0
 
         return recent[-1] - recent[0]
+
+    def get_smart_click_targets(self, image: Image.Image) -> list:
+        """
+        Find valid click targets by detecting borders between our
+        territory and neutral/enemy land.
+        
+        Args:
+            image: Cropped game area PIL Image
+            
+        Returns:
+            List of (x, y) pixel coordinates in GAME AREA space,
+            sorted by priority (closest to center first)
+        """
+        # Downsample for speed
+        small = image.resize((80, 56), Image.BILINEAR)
+        pixels = np.array(small)
+        h, w, _ = pixels.shape
+        
+        # Get original dimensions for scaling
+        orig_w, orig_h = image.size
+        scale_x = orig_w / w
+        scale_y = orig_h / h
+        
+        # Classify pixels
+        is_player = np.zeros((h, w), dtype=bool)
+        is_target = np.zeros((h, w), dtype=bool)  # neutral or enemy
+        
+        for row in range(h):
+            for col in range(w):
+                r, g, b = pixels[row, col]
+                hue, sat, val = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+                h_deg = hue * 360
+                s_pct = sat * 100
+                v_pct = val * 100
+                
+                # Our blue territory
+                if (PLAYER_HUE_MIN <= h_deg <= PLAYER_HUE_MAX and
+                        s_pct >= PLAYER_SAT_MIN and v_pct >= 30):
+                    is_player[row, col] = True
+                # Neutral (gray) or enemy (colored)
+                elif (s_pct < 15 and 40 < v_pct < 240) or (s_pct >= 20 and v_pct >= 20):
+                    is_target[row, col] = True
+        
+        # Find border pixels: target pixels adjacent to our territory
+        targets = []
+        for row in range(1, h - 1):
+            for col in range(1, w - 1):
+                if not is_target[row, col]:
+                    continue
+                neighbors = [
+                    is_player[row-1, col], is_player[row+1, col],
+                    is_player[row, col-1], is_player[row, col+1],
+                ]
+                if any(neighbors):
+                    px = int(col * scale_x + GAME_AREA_LEFT)
+                    py = int(row * scale_y + GAME_AREA_TOP)
+                    targets.append((px, py))
+        
+        # Sort by distance to center (prioritize nearby targets)
+        cx = orig_w // 2 + GAME_AREA_LEFT
+        cy = orig_h // 2 + GAME_AREA_TOP
+        targets.sort(key=lambda t: abs(t[0] - cx) + abs(t[1] - cy))
+        
+        return targets
 
 
 # ==============================================
