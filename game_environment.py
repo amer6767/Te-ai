@@ -259,6 +259,9 @@ class TerritorialEnvironment:
             if state["percentage"] > 0:
                 print(f"   ✅ Spawn confirmed ({state['percentage']}%) "
                       f"on attempt {attempt + 1}")
+                # Zoom out so the CNN model can see more of the map
+                await self.page.mouse.wheel(0, 2000)
+                await self.page.wait_for_timeout(500)
                 return True
 
             attempt += 1
@@ -311,17 +314,16 @@ class TerritorialEnvironment:
             # Translate normalized coordinates to pixel coordinates
             screen_x = action_dict.get("screen_x", 0.5)
             screen_y = action_dict.get("screen_y", 0.5)
-            # Map normalized [0,1] to game area pixels
-            # Game area is roughly from (200, 100) to (1080, 800)
-            pixel_x = int(200 + screen_x * 880)
-            pixel_y = int(100 + screen_y * 700)
+            # Map normalized [0,1] to game area pixels (centered around base)
+            pixel_x = int(640 + (screen_x - 0.5) * 800)
+            pixel_y = int(450 + (screen_y - 0.5) * 600)
             await self.page.mouse.click(pixel_x, pixel_y)
 
         elif action_type == "expand":
             await set_slider(self.page, EXPAND_PCT)
-            # Click a random area to expand into
-            expand_x = random.randint(250, 550)
-            expand_y = random.randint(200, 500)
+            # Click a random area to expand into (centered around base)
+            expand_x = random.randint(640 - 200, 640 + 200)
+            expand_y = random.randint(450 - 200, 450 + 200)
             await self.page.mouse.click(expand_x, expand_y)
 
         elif action_type == "defend":
