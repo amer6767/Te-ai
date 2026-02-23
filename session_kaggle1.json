@@ -1,34 +1,52 @@
 {
   "metadata": {
     "account_name": "kaggle1",
-    "session_date": "2026-02-23T17:20:26.099325",
-    "duration_minutes": 0.02673372030258179,
+    "session_date": "2026-02-23T18:47:39.352804",
+    "duration_minutes": 0.2500706950823466,
     "phase": "phase_1_human_teacher",
     "difficulty": "easy",
-    "total_games_ever": 1
+    "total_games_ever": 10
   },
   "session_stats": {
     "account_name": "kaggle1",
-    "start_time": 1771867224.4924595,
-    "end_time": 1771867226.0964828,
-    "duration_minutes": 0.02673372030258179,
-    "games_played": 1,
+    "start_time": 1771872444.3454108,
+    "end_time": 1771872459.3496525,
+    "duration_minutes": 0.2500706950823466,
+    "games_played": 10,
     "games_won": 0,
-    "games_lost": 1,
+    "games_lost": 10,
     "win_rate": 0.0,
-    "total_moves": 60,
+    "total_moves": 600,
     "total_random_moves": 0,
     "total_smart_moves": 0,
-    "total_reward": 89.50000000000009,
-    "avg_reward": 89.50000000000009,
-    "best_game_reward": 89.50000000000009,
-    "worst_game_reward": 89.50000000000009,
-    "best_territory": 0.6700000000000003,
+    "total_reward": 653.3000000000001,
+    "avg_reward": 65.33000000000001,
+    "best_game_reward": 143.00000000000003,
+    "worst_game_reward": 15.199999999999989,
+    "best_territory": 0.7500000000000003,
     "reward_per_game": [
-      89.50000000000009
+      33.099999999999966,
+      15.199999999999989,
+      104.70000000000007,
+      48.70000000000002,
+      24.69999999999999,
+      47.19999999999996,
+      89.80000000000001,
+      83.80000000000004,
+      63.099999999999966,
+      143.00000000000003
     ],
     "territory_per_game": [
-      0.6700000000000003
+      0.55,
+      0.5100000000000001,
+      0.7100000000000003,
+      0.6400000000000002,
+      0.39000000000000007,
+      0.55,
+      0.5900000000000002,
+      0.7000000000000003,
+      0.6400000000000001,
+      0.7500000000000003
     ],
     "factor_averages": {
       "territory_change": 0.0,
@@ -47,25 +65,115 @@
         "game_id": 1,
         "won": false,
         "moves": 60,
-        "total_reward": 89.50000000000009,
-        "final_territory": 0.6700000000000003,
+        "total_reward": 33.099999999999966,
+        "final_territory": 0.55,
         "difficulty": "easy",
         "phase": "phase_1_human_teacher",
-        "timestamp": 1771867226.0745275
+        "timestamp": 1771872447.2414992
+      },
+      {
+        "game_id": 2,
+        "won": false,
+        "moves": 60,
+        "total_reward": 15.199999999999989,
+        "final_territory": 0.5100000000000001,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872448.64192
+      },
+      {
+        "game_id": 3,
+        "won": false,
+        "moves": 60,
+        "total_reward": 104.70000000000007,
+        "final_territory": 0.7100000000000003,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872449.9508247
+      },
+      {
+        "game_id": 4,
+        "won": false,
+        "moves": 60,
+        "total_reward": 48.70000000000002,
+        "final_territory": 0.6400000000000002,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872451.2805188
+      },
+      {
+        "game_id": 5,
+        "won": false,
+        "moves": 60,
+        "total_reward": 24.69999999999999,
+        "final_territory": 0.39000000000000007,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872452.6157055
+      },
+      {
+        "game_id": 6,
+        "won": false,
+        "moves": 60,
+        "total_reward": 47.19999999999996,
+        "final_territory": 0.55,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872453.9731026
+      },
+      {
+        "game_id": 7,
+        "won": false,
+        "moves": 60,
+        "total_reward": 89.80000000000001,
+        "final_territory": 0.5900000000000002,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872455.2881145
+      },
+      {
+        "game_id": 8,
+        "won": false,
+        "moves": 60,
+        "total_reward": 83.80000000000004,
+        "final_territory": 0.7000000000000003,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872456.616912
+      },
+      {
+        "game_id": 9,
+        "won": false,
+        "moves": 60,
+        "total_reward": 63.099999999999966,
+        "final_territory": 0.6400000000000001,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872457.9694238
+      },
+      {
+        "game_id": 10,
+        "won": false,
+        "moves": 60,
+        "total_reward": 143.00000000000003,
+        "final_territory": 0.7500000000000003,
+        "difficulty": "easy",
+        "phase": "phase_1_human_teacher",
+        "timestamp": 1771872459.3081212
       }
     ]
   },
   "curriculum_state": {
     "phase": "phase_1_human_teacher",
     "difficulty": "easy",
-    "total_games": 1,
+    "total_games": 10,
     "promotion_progress": {
       "current_difficulty": "easy",
       "next_difficulty": "medium",
       "games_played": {
-        "current": 1,
+        "current": 10,
         "needed": 50,
-        "progress": 0.02
+        "progress": 0.2
       },
       "win_rate": {
         "current": 0.0,
@@ -77,18 +185,18 @@
         "needed": 5,
         "progress": 0.0
       },
-      "overall_progress": 0.006
+      "overall_progress": 0.06
     }
   },
   "model_info": {
-    "epsilon": 0.9831395048898272,
-    "steps_done": 60,
+    "epsilon": 0.7337569758226774,
+    "steps_done": 600,
     "episodes_done": 0,
-    "memory_size": 60
+    "memory_size": 600
   },
   "session_name": "kaggle1",
   "platform": "colab",
-  "total_games_played": 1,
+  "total_games_played": 10,
   "win_rate": 0.0,
   "current_phase": "phase_1_human_teacher",
   "current_difficulty": "easy",
@@ -110,5 +218,5 @@
     "map_position": 0.0,
     "aggression_balance": 0.0
   },
-  "last_updated": 1771867226.0993762
+  "last_updated": 1771872459.352863
 }
