@@ -101,16 +101,13 @@ class GitHubSync:
         Get GitHub token from environment or Kaggle secrets.
         
         Tries in order:
-            1. GITHUB_TOKEN environment variable
-            2. Kaggle secrets (via kaggle_secrets UserSecretsClient)
+            1. Kaggle secrets (via kaggle_secrets UserSecretsClient)
+               — checked first because Kaggle Secrets are not always
+               auto-loaded into os.environ depending on container setup
+            2. GITHUB_TOKEN environment variable
             3. GH_TOKEN environment variable (alternative name)
         """
-        # Try standard environment variable
-        token = os.environ.get("GITHUB_TOKEN")
-        if token:
-            return token
-
-        # Try Kaggle secrets
+        # Try Kaggle secrets FIRST (not always in os.environ on Kaggle)
         try:
             from kaggle_secrets import UserSecretsClient
             client = UserSecretsClient()
@@ -119,6 +116,11 @@ class GitHubSync:
                 return token
         except (ImportError, Exception):
             pass
+
+        # Fall back to standard environment variables
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            return token
 
         # Try alternative env var name
         token = os.environ.get("GH_TOKEN")

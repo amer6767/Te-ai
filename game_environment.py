@@ -143,42 +143,117 @@ class TerritorialEnvironment:
         """
         Navigate to Territorial.io, set up a 30-player custom game,
         spawn at position (300, 280), and return the first screenshot.
-        
+
+        Uses selector-based clicking for UI buttons and a verification
+        loop to confirm the player actually spawned before proceeding.
+
         Returns:
             PIL Image of the initial game state.
         """
-        # Create a new browser page
-        self.page = await self.browser.new_page(
-            viewport={"width": self.viewport_width, "height": self.viewport_height}
-        )
+        # Maximum number of full-page resets before giving up
+        MAX_HARD_RESETS = 3
 
-        # Navigate to the game
-        await self.page.goto("https://territorial.io", timeout=30000)
-        await self.page.wait_for_timeout(6000)
+        for reset_attempt in range(MAX_HARD_RESETS):
+            # --- Create a new browser page ---
+            if self.page:
+                await self.page.close()
 
-        # Select custom scenario
-        await self.page.click("text=Custom Scenario")
-        await self.page.wait_for_timeout(2000)
+            self.page = await self.browser.new_page(
+                viewport={"width": self.viewport_width, "height": self.viewport_height}
+            )
 
-        # Set 30 players
-        await self.page.fill("#input1", "30")
-        await self.page.wait_for_timeout(500)
+            # --- Navigate to the game ---
+            await self.page.goto("https://territorial.io", timeout=30000)
+            await self.page.wait_for_timeout(6000)
 
-        # Start the game
-        await self.page.mouse.click(960, 860)
-        await self.page.wait_for_timeout(4000)
+            # --- Select custom scenario (selector-based) ---
+            try:
+                custom_btn = self.page.get_by_text("Custom", exact=False)
+                await custom_btn.wait_for(state="visible", timeout=10000)
+                await custom_btn.click()
+                await self.page.wait_for_timeout(2000)
+            except Exception as e:
+                print(f"   ⚠️ Could not find 'Custom' button: {e}")
+                continue  # Hard reset
 
-        # Spawn at position (300, 280) — corner/edge strategy
-        await self.page.mouse.dblclick(300, 280)
-        await self.page.wait_for_timeout(2000)
+            # --- Set 30 players ---
+            await self.page.fill("#input1", "30")
+            await self.page.wait_for_timeout(500)
 
-        # Reset tracking
+            # --- Start the game (selector-based) ---
+            try:
+                start_btn = self.page.get_by_text("Singleplayer", exact=False)
+                await start_btn.wait_for(state="visible", timeout=10000)
+                await start_btn.click()
+                await self.page.wait_for_timeout(4000)
+            except Exception as e:
+                print(f"   ⚠️ Could not find 'Singleplayer' button: {e}")
+                continue  # Hard reset
+
+            # --- Spawn verification loop ---
+            spawn_success = await self._verify_spawn()
+            if spawn_success:
+                break  # Spawn confirmed — proceed
+
+            # Spawn failed after timeout — save debug screenshot & hard reset
+            print(f"   🔄 Hard reset {reset_attempt + 1}/{MAX_HARD_RESETS}")
+
+        else:
+            # All hard resets exhausted
+            print("   ❌ Failed to spawn after all reset attempts")
+
+        # --- Reset tracking ---
         self.step_count = 0
         self.cycle = 0
         self.prev_territory = 0.0
 
         # Return the initial screenshot as PIL Image
         return await self.get_screenshot()
+
+    async def _verify_spawn(self, timeout_seconds: float = 5.0) -> bool:
+        """
+        Attempt to spawn and verify that territory > 0%.
+
+        Retries the double-click with slight coordinate jitter until
+        spawn is confirmed or the timeout is reached.
+
+        Args:
+            timeout_seconds: Maximum time to keep retrying.
+
+        Returns:
+            True if spawn succeeded (territory > 0%), False otherwise.
+        """
+        SPAWN_X, SPAWN_Y = 300, 280
+        JITTER = 15  # pixels of random jitter on retry
+        start_time = time.time()
+        attempt = 0
+
+        while (time.time() - start_time) < timeout_seconds:
+            # Double-click to spawn (add jitter after first attempt)
+            jx = SPAWN_X + (random.randint(-JITTER, JITTER) if attempt > 0 else 0)
+            jy = SPAWN_Y + (random.randint(-JITTER, JITTER) if attempt > 0 else 0)
+            await self.page.mouse.dblclick(jx, jy)
+            await self.page.wait_for_timeout(500)
+
+            # Check if we actually spawned
+            state = await get_state(self.page)
+            if state["percentage"] > 0:
+                print(f"   ✅ Spawn confirmed ({state['percentage']}%) "
+                      f"on attempt {attempt + 1}")
+                return True
+
+            attempt += 1
+
+        # Timeout — save debug screenshot
+        try:
+            await self.page.screenshot(path="debug_spawn_failure.png")
+            print("   📸 Debug screenshot saved: debug_spawn_failure.png")
+        except Exception as e:
+            print(f"   ⚠️ Could not save debug screenshot: {e}")
+
+        print(f"   ❌ Spawn verification timed out after {timeout_seconds}s "
+              f"({attempt} attempts)")
+        return False
 
     async def step(self, action_dict: dict) -> tuple:
         """
