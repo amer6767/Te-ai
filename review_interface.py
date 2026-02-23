@@ -1,24 +1,13 @@
 """
 =============================================================================
-review_interface.py — Terminal Human Move Review Interface
+review_interface.py — Jupyter/Terminal Move Review Interface
 =============================================================================
 
-A terminal-based interface for humans to rate AI moves. Loads moves
-from review_queue.json, presents them one at a time, and lets the
-human rate each of the 10 factors.
+Updated to fix "Blind Rating" in Kaggle/Colab.
+Now displays the game screenshot inline using IPython.display if available.
 
-Rating options per factor:
-    g = good
-    b = can be better (NOT bad)
-    x = bad
-    s = skip (move stays in queue unchanged)
-
-After rating, moves transfer from review_queue.json to rated_moves.json.
-At the end of a review session, pushes rated_moves.json to GitHub.
-
-Can be interrupted and resumed anytime without losing progress.
-
-=============================================================================
+Usage:
+    python review_interface.py
 """
 
 # ==============================================
@@ -31,6 +20,21 @@ import sys
 import time
 from typing import List, Dict, Optional
 
+# Check if running in a notebook environment
+def is_notebook():
+    try:
+        from IPython import get_ipython
+        if 'IPKernelApp' not in get_ipython().config:
+            return False
+    except ImportError:
+        return False
+    except AttributeError:
+        return False
+    return True
+
+# Import display libraries if in notebook
+if is_notebook():
+    from IPython.display import display, Image as IPImage, clear_output
 
 # ==============================================
 # CONFIGURATION
@@ -113,51 +117,64 @@ def save_rated(rated: List[Dict], filepath: str = RATED_MOVES_FILE):
 
 
 def display_move(move: Dict, index: int, total: int, queue_remaining: int):
-    """Display a single move for human review."""
+    """Display a single move with Screenshot support for Notebooks."""
+    
+    # Clear previous cell output if in notebook to keep it clean
+    if is_notebook():
+        clear_output(wait=True)
+
     print(f"\n{'='*60}")
     print(f"📋 MOVE REVIEW — Move {index + 1} of {total} | "
           f"Queue: {queue_remaining} remaining")
     print(f"{'='*60}")
     print()
     print(f"  🏷️  Move ID:     {move.get('move_id', 'unknown')}")
-    print(f"  💻 Session:     {move.get('session', 'unknown')}")
     print(f"  🎮 Game:        {move.get('game_number', '?')}")
-    print(f"  🎯 Move #:      {move.get('move_number', '?')}")
     print(f"  ⚡ Action:      {move.get('action_type', 'unknown')}")
-    print(f"  📍 Action Index: {move.get('action_index', '?')}")
 
     grid_row = move.get('grid_row')
     grid_col = move.get('grid_col')
     if grid_row is not None and grid_col is not None:
         print(f"  📐 Grid:        row={grid_row}, col={grid_col}")
 
+    # --- IMAGE DISPLAY LOGIC ---
+    screenshot_path = move.get("screenshot_path")
+    
+    if screenshot_path and os.path.exists(screenshot_path):
+        if is_notebook():
+            print(f"\n  🖼️ SCREENSHOT ({screenshot_path}):")
+            try:
+                display(IPImage(filename=screenshot_path))
+            except Exception as e:
+                print(f"  ⚠️ Could not render image inline: {e}")
+        else:
+            print(f"\n  🖼️ Screenshot available at: {screenshot_path}")
+            print(f"     (Open file manually if not using a Notebook)")
+    elif screenshot_path:
+        print(f"\n  ⚠️ Screenshot file missing: {screenshot_path}")
+    else:
+        print("\n  ⚠️ No screenshot captured for this move.")
+    
+    # ---------------------------
+
     print(f"\n  📊 Auto-Scored Factors:")
     auto_scores = move.get("auto_scores", {})
-
-    # Handle nested format from MoveScorer (may have "factors" key)
     if isinstance(auto_scores, dict) and "factors" in auto_scores:
         auto_scores = auto_scores["factors"]
 
     for factor in FACTOR_NAMES:
         score = auto_scores.get(factor) if isinstance(auto_scores, dict) else None
-        desc = FACTOR_DESCRIPTIONS.get(factor, "")
         if score is not None:
             bar = "█" * int(abs(score) * 10)
             sign = "+" if score >= 0 else "-"
             print(f"     {factor:30s} {sign}{abs(score):.2f} {bar}")
         else:
             print(f"     {factor:30s}  [NEEDS HUMAN RATING]")
-
     print()
 
 
 def rate_move(move: Dict) -> Optional[Dict]:
-    """
-    Interactively rate a single move on all 10 factors.
-    
-    Returns:
-        Dict of {factor_name: rating} if rated, or None if skipped
-    """
+    """Interactively rate a single move."""
     print("  Rate each factor: g=good, b=can be better, x=bad, s=skip move")
     print("  " + "-" * 55)
 
@@ -168,13 +185,13 @@ def rate_move(move: Dict) -> Optional[Dict]:
 
         while True:
             try:
-                choice = input(f"  {factor:30s} ({desc[:40]:40s}) [g/b/x/s]: ").strip().lower()
+                prompt_text = f"  {factor:30s} ({desc[:40]:40s}) [g/b/x/s]: "
+                choice = input(prompt_text).strip().lower()
             except (EOFError, KeyboardInterrupt):
                 print("\n\n⏸️  Review interrupted. Progress saved.")
                 return None
 
             if choice == "s":
-                # Skip entire move
                 print("  ⏭️  Skipping this move (stays in queue)")
                 return None
 
@@ -188,90 +205,66 @@ def rate_move(move: Dict) -> Optional[Dict]:
 
 
 def run_review_session():
-    """
-    Main review loop. Loads queue, presents moves one at a time,
-    records ratings, and saves progress.
-    """
     print("\n" + "=" * 60)
     print("📋 TERRITORIAL.IO — MOVE REVIEW INTERFACE")
+    print(f"   Mode: {'Jupyter Notebook' if is_notebook() else 'Terminal'}")
     print("=" * 60)
 
-    # Load the queue
     queue = load_queue()
     if not queue:
         print("\n✅ No moves to review! Queue is empty.")
         return
 
     rated_moves = load_rated()
-
     total_moves = len(queue)
-    unique_sessions = len(set(m.get("session", "") for m in queue))
-    print(f"\n  📊 Queue: {total_moves} moves from {unique_sessions} sessions")
-    print(f"  📝 Already rated: {len(rated_moves)} moves")
-    print()
-
+    
     reviewed_count = 0
     skipped_count = 0
     moves_to_remove = []
 
     for i, move in enumerate(queue):
+        # Stop if we processed 50 moves to prevent session timeout/fatigue
+        if reviewed_count >= 50:
+            print("\n🛑 Pausing after 50 moves. Run again to continue!")
+            break
+
         queue_remaining = total_moves - i - skipped_count
 
-        # Display the move
         display_move(move, i, total_moves, queue_remaining)
-
-        # Get human rating
         ratings = rate_move(move)
 
         if ratings is None:
-            # Move was skipped — stays in queue
             skipped_count += 1
             continue
 
-        # Calculate overall rating
+        # Simple Logic for overall score
         good_count = sum(1 for r in ratings.values() if r == "good")
         bad_count = sum(1 for r in ratings.values() if r == "bad")
-        if good_count >= 7:
-            overall = "good"
-        elif bad_count >= 4:
-            overall = "bad"
-        else:
-            overall = "can_be_better"
+        
+        if good_count >= 7: overall = "good"
+        elif bad_count >= 4: overall = "bad"
+        else: overall = "can_be_better"
 
-        # Build rated entry
         rated_entry = {
             **move,
             "human_ratings": ratings,
             "overall_human_rating": overall,
             "rated_at": time.time(),
-            "notes": None,
         }
+        
         rated_moves.append(rated_entry)
         moves_to_remove.append(move["move_id"])
         reviewed_count += 1
 
-        # Print feedback
-        emoji = {"good": "✅", "can_be_better": "🔶", "bad": "❌"}
-        print(f"\n  {emoji.get(overall, '?')} Rated: {overall} "
-              f"({good_count}/10 good)")
+        print(f"\n  ✅ Rated: {overall}")
 
-        # Auto-save progress every 5 moves
         if reviewed_count % 5 == 0:
             _save_progress(queue, moves_to_remove, rated_moves)
-            print(f"  💾 Progress auto-saved ({reviewed_count} rated so far)")
+            print(f"  💾 Progress auto-saved")
 
-    # Final save
     _save_progress(queue, moves_to_remove, rated_moves)
 
-    # Print summary
-    print(f"\n{'='*60}")
-    print(f"📊 REVIEW SESSION COMPLETE")
-    print(f"{'='*60}")
-    print(f"  ✅ Rated:   {reviewed_count} moves")
-    print(f"  ⏭️  Skipped: {skipped_count} moves")
-    print(f"  📋 Queue:   {total_moves - reviewed_count} remaining")
-
-    # Push to GitHub if sync is available
+    # Push to GitHub
     try:
         from sync import GitHubSync
         sync = GitHubSync()
@@ -279,23 +272,14 @@ def run_review_session():
         sync.push_rated_moves()
         print("✅ Sync complete!")
     except ImportError:
-        print("\n⚠️ sync.py not available — skipping GitHub push")
+        pass
     except Exception as e:
-        print(f"\n⚠️ Sync failed: {e}")
+        print(f"Sync error: {e}")
 
-
-def _save_progress(queue: List[Dict], moves_to_remove: List[str],
-                   rated_moves: List[Dict]):
-    """Save current progress: update queue and rated files."""
-    # Remove rated moves from queue
-    updated_queue = [m for m in queue if m.get("move_id") not in moves_to_remove]
+def _save_progress(queue, remove_ids, rated):
+    updated_queue = [m for m in queue if m.get("move_id") not in remove_ids]
     save_queue(updated_queue)
-    save_rated(rated_moves)
-
-
-# ==============================================
-# ENTRY POINT
-# ==============================================
+    save_rated(rated)
 
 if __name__ == "__main__":
     run_review_session()
