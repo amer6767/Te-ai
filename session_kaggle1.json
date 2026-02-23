@@ -1,17 +1,17 @@
 {
   "metadata": {
     "account_name": "kaggle1",
-    "session_date": "2026-02-23T22:03:50.410804",
-    "duration_minutes": 4.75924371878306,
+    "session_date": "2026-02-23T22:09:23.119245",
+    "duration_minutes": 4.056801986694336,
     "phase": "phase_1_human_teacher",
     "difficulty": "easy",
     "total_games_ever": 1
   },
   "session_stats": {
     "account_name": "kaggle1",
-    "start_time": 1771883944.8535924,
-    "end_time": 1771884230.4082155,
-    "duration_minutes": 4.75924371878306,
+    "start_time": 1771884319.708528,
+    "end_time": 1771884563.1166472,
+    "duration_minutes": 4.056801986694336,
     "games_played": 1,
     "games_won": 0,
     "games_lost": 1,
@@ -51,7 +51,7 @@
         "final_territory": 0.0,
         "difficulty": "easy",
         "phase": "phase_1_human_teacher",
-        "timestamp": 1771884230.3192592
+        "timestamp": 1771884563.0482156
       }
     ]
   },
@@ -110,5 +110,5 @@
     "map_position": 0.0,
     "aggression_balance": 0.0
   },
-  "last_updated": 1771884230.4108603
+  "last_updated": 1771884563.119301
 }
