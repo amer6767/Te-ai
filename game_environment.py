@@ -208,7 +208,15 @@ class TerritorialEnvironment:
         self.prev_territory = 0.0
 
         # Return the initial screenshot as PIL Image
-        return await self.get_screenshot()
+        screenshot = await self.get_screenshot()
+        
+        # Save to show the first frame
+        try:
+            screenshot.save("live_view.png")
+        except Exception:
+            pass
+            
+        return screenshot
 
     async def _verify_spawn(self, timeout_seconds: float = 5.0) -> bool:
         """
@@ -331,6 +339,13 @@ class TerritorialEnvironment:
 
         # --- Get screenshot ---
         screenshot = await self.get_screenshot()
+
+        # Save a frame every 6 moves (~5 seconds)
+        if self.step_count % 6 == 0:
+            try:
+                screenshot.save("live_view.png")
+            except Exception:
+                pass
 
         # --- Build info dict — IDENTICAL format to FakeGameEnvironment ---
         info = {
