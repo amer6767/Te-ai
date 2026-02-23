@@ -177,18 +177,29 @@ class TerritorialEnvironment:
                 continue  # Hard reset
 
             # --- Set 30 players ---
-            await self.page.fill("#input1", "30")
+            # Click the player count text box (roughly X: 300, Y: 280)
+            await self.page.mouse.click(300, 280)
+            await self.page.wait_for_timeout(500)
+            
+            # Delete existing number (e.g. 512)
+            for _ in range(4):
+                await self.page.keyboard.press("Backspace")
+                
+            # Type 30
+            await self.page.keyboard.type("30")
             await self.page.wait_for_timeout(500)
 
             # --- Start the game (selector-based) ---
             try:
-                start_btn = self.page.get_by_text("Singleplayer", exact=False)
-                await start_btn.wait_for(state="visible", timeout=10000)
+                start_btn = self.page.get_by_text("Play", exact=False)
+                await start_btn.wait_for(state="visible", timeout=6000)
                 await start_btn.click()
-                await self.page.wait_for_timeout(4000)
             except Exception as e:
-                print(f"   ⚠️ Could not find 'Singleplayer' button: {e}")
-                continue  # Hard reset
+                print(f"   ⚠️ Could not find 'Play' button, falling back to coordinates: {e}")
+                # Fallback to roughly X: 960, Y: 860
+                await self.page.mouse.click(960, 860)
+            
+            await self.page.wait_for_timeout(4000)
 
             # --- Spawn verification loop ---
             spawn_success = await self._verify_spawn()
