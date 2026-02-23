@@ -1,0 +1,104 @@
+{
+  "sessions": {
+    "colab1": {
+      "platform": "colab",
+      "account_name": "colab1",
+      "model_path": "models/model_colab1.pth",
+      "session_file": "session_colab1.json"
+    },
+    "colab2": {
+      "platform": "colab",
+      "account_name": "colab2",
+      "model_path": "models/model_colab2.pth",
+      "session_file": "session_colab2.json"
+    },
+    "colab3": {
+      "platform": "colab",
+      "account_name": "colab3",
+      "model_path": "models/model_colab3.pth",
+      "session_file": "session_colab3.json"
+    },
+    "colab4": {
+      "platform": "colab",
+      "account_name": "colab4",
+      "model_path": "models/model_colab4.pth",
+      "session_file": "session_colab4.json"
+    },
+    "kaggle1": {
+      "platform": "kaggle",
+      "account_name": "kaggle1",
+      "model_path": "models/model_kaggle1.pth",
+      "session_file": "session_kaggle1.json"
+    },
+    "kaggle2": {
+      "platform": "kaggle",
+      "account_name": "kaggle2",
+      "model_path": "models/model_kaggle2.pth",
+      "session_file": "session_kaggle2.json"
+    }
+  },
+  "training": {
+    "games_per_batch": 10,
+    "max_moves_per_game": 200,
+    "phase1_game_limit": 1000
+  },
+  "difficulty_thresholds": {
+    "easy_to_medium": {
+      "win_rate": 0.60,
+      "min_games": 50,
+      "consecutive_wins": 5
+    },
+    "medium_to_hard": {
+      "win_rate": 0.55,
+      "min_games": 100,
+      "consecutive_wins": 4
+    }
+  },
+  "github": {
+    "repo_url": "https://github.com/amer6767/Te-ai",
+    "main_branch": "main"
+  },
+  "playwright": {
+    "viewport_width": 1280,
+    "viewport_height": 900,
+    "timeout": 30000,
+    "step_delay_ms": 800
+  },
+  "game_strategy": {
+    "greenbiscuit_opening": {
+      "1": 30,
+      "2": 35,
+      "3": 32,
+      "4": 30,
+      "5": 46
+    },
+    "attack_density_threshold": 50,
+    "expand_pct": 32,
+    "red_interest": 140,
+    "late_game_slider_adjustment_range": [10, 15]
+  },
+  "factors": {
+    "territory_change": 0.20,
+    "attack_timing": 0.12,
+    "target_selection": 0.12,
+    "border_efficiency": 0.08,
+    "survival_instinct": 0.15,
+    "power_management": 0.08,
+    "opportunity_recognition": 0.10,
+    "multi_enemy_awareness": 0.05,
+    "map_position": 0.05,
+    "aggression_balance": 0.05
+  },
+  "review": {
+    "min_factors_for_best_moves": 7,
+    "queue_max_size": 500
+  },
+  "rewards": {
+    "win_bonus": 100,
+    "loss_penalty": -50,
+    "elimination_bonus": 25,
+    "survived_round_bonus": 1.0,
+    "territory_gain_multiplier": 2.0,
+    "territory_loss_multiplier": 3.0
+  }
+}

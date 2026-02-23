@@ -1,0 +1,110 @@
+{
+    "session_name": "colab1",
+    "platform": "colab",
+    "total_games_played": 47,
+    "win_rate": 0.383,
+    "current_phase": "phase_1_human_teacher",
+    "current_difficulty": "easy",
+    "model_checkpoint_path": "models/model_colab1.pth",
+    "best_strategies": [
+        "greenbiscuit_opening_into_corner_expand",
+        "early_turtle_then_mid_game_push",
+        "target_weakest_neighbor_first"
+    ],
+    "mistakes_to_avoid": [
+        "attacking_strongest_player_early",
+        "overextending_borders_past_40_percent",
+        "ignoring_flanking_enemies"
+    ],
+    "greenbiscuit_stats": {
+        "games_with_opening": 42,
+        "games_without_opening": 5,
+        "win_rate_with_opening": 0.405,
+        "win_rate_without_opening": 0.200,
+        "following_opening": true
+    },
+    "factor_averages": {
+        "territory_change": 0.28,
+        "attack_timing": 0.15,
+        "target_selection": 0.22,
+        "border_efficiency": 0.10,
+        "survival_instinct": 0.45,
+        "power_management": 0.18,
+        "opportunity_recognition": 0.20,
+        "multi_enemy_awareness": 0.08,
+        "map_position": 0.30,
+        "aggression_balance": 0.12
+    },
+    "last_updated": 1740340800.0,
+    "metadata": {
+        "account_name": "colab1",
+        "session_date": "2025-02-23T16:00:00",
+        "duration_minutes": 45.2,
+        "phase": "phase_1_human_teacher",
+        "difficulty": "easy",
+        "total_games_ever": 47
+    },
+    "session_stats": {
+        "account_name": "colab1",
+        "games_played": 10,
+        "games_won": 4,
+        "games_lost": 6,
+        "win_rate": 0.40,
+        "total_moves": 1247,
+        "total_reward": 385.6,
+        "avg_reward": 38.56,
+        "best_game_reward": 112.3,
+        "worst_game_reward": -28.4,
+        "best_territory": 0.287,
+        "territory_per_game": [
+            0.12,
+            0.18,
+            0.287,
+            0.09,
+            0.22,
+            0.15,
+            0.19,
+            0.25,
+            0.11,
+            0.20
+        ],
+        "reward_per_game": [
+            45.2,
+            62.1,
+            112.3,
+            -28.4,
+            55.0,
+            30.2,
+            40.8,
+            78.5,
+            -15.2,
+            5.1
+        ]
+    },
+    "curriculum_state": {
+        "phase": "phase_1_human_teacher",
+        "difficulty": "easy",
+        "total_games": 47,
+        "promotion_progress": {
+            "overall_progress": 0.35,
+            "games_played": {
+                "current": 47,
+                "needed": 50
+            },
+            "win_rate": {
+                "current": 0.383,
+                "needed": 0.60
+            },
+            "win_streak": {
+                "current": 2,
+                "needed": 5
+            }
+        }
+    },
+    "model_info": {
+        "epsilon": 0.42,
+        "steps_done": 5870,
+        "episodes_done": 47,
+        "memory_size": 5870
+    }
+}

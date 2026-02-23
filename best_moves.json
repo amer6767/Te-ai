@@ -1,0 +1,44 @@
+[
+    {
+        "move_id": "colab1_game003_move031",
+        "session": "colab1",
+        "game_number": 3,
+        "action_type": "click",
+        "game_situation": "Mid-game, 18% territory, two weaker neighbors fighting each other. Pushed into the gap they created.",
+        "all_10_factor_ratings": {
+            "territory_change": "good",
+            "attack_timing": "good",
+            "target_selection": "good",
+            "border_efficiency": "can_be_better",
+            "survival_instinct": "good",
+            "power_management": "can_be_better",
+            "opportunity_recognition": "good",
+            "multi_enemy_awareness": "can_be_better",
+            "map_position": "good",
+            "aggression_balance": "good"
+        },
+        "why_great": "Exploited the gap created by two enemies fighting each other, gaining 5% territory with minimal risk.",
+        "how_to_replicate": "When two neighbors are actively battling, push into the contested area at slider 32% to claim neutral territory they abandoned."
+    },
+    {
+        "move_id": "colab3_game015_move078",
+        "session": "colab3",
+        "game_number": 15,
+        "action_type": "expand",
+        "game_situation": "Late-game, 32% territory, only 4 players remaining. Expanded into eliminated player's former territory.",
+        "all_10_factor_ratings": {
+            "territory_change": "good",
+            "attack_timing": "good",
+            "target_selection": "good",
+            "border_efficiency": "good",
+            "survival_instinct": "good",
+            "power_management": "good",
+            "opportunity_recognition": "good",
+            "multi_enemy_awareness": "good",
+            "map_position": "good",
+            "aggression_balance": "can_be_better"
+        },
+        "why_great": "Perfectly timed expansion into dead player's territory, gaining 8% land with zero combat. 9 out of 10 factors rated good.",
+        "how_to_replicate": "Monitor for player eliminations, immediately expand into their vacated territory before other players can claim it. Use expand action with slider at 32%."
+    }
+]

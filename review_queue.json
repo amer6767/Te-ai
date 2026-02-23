@@ -1,0 +1,77 @@
+[
+    {
+        "move_id": "colab1_game005_move047",
+        "session": "colab1",
+        "game_number": 5,
+        "move_number": 47,
+        "action_type": "click",
+        "action_index": 183,
+        "grid_row": 11,
+        "grid_col": 7,
+        "auto_scores": {
+            "territory_change": 0.35,
+            "attack_timing": 0.22,
+            "target_selection": null,
+            "border_efficiency": null,
+            "survival_instinct": 0.65,
+            "power_management": null,
+            "opportunity_recognition": 0.18,
+            "multi_enemy_awareness": null,
+            "map_position": 0.40,
+            "aggression_balance": null
+        },
+        "human_ratings": null,
+        "timestamp": 1740312000.0,
+        "priority": 0.72
+    },
+    {
+        "move_id": "kaggle1_game012_move089",
+        "session": "kaggle1",
+        "game_number": 12,
+        "move_number": 89,
+        "action_type": "expand",
+        "action_index": 258,
+        "grid_row": null,
+        "grid_col": null,
+        "auto_scores": {
+            "territory_change": 0.52,
+            "attack_timing": null,
+            "target_selection": null,
+            "border_efficiency": 0.31,
+            "survival_instinct": 0.78,
+            "power_management": 0.15,
+            "opportunity_recognition": null,
+            "multi_enemy_awareness": null,
+            "map_position": null,
+            "aggression_balance": 0.20
+        },
+        "human_ratings": null,
+        "timestamp": 1740315600.0,
+        "priority": 0.55
+    },
+    {
+        "move_id": "colab3_game008_move023",
+        "session": "colab3",
+        "game_number": 8,
+        "move_number": 23,
+        "action_type": "click",
+        "action_index": 45,
+        "grid_row": 2,
+        "grid_col": 13,
+        "auto_scores": {
+            "territory_change": -0.15,
+            "attack_timing": 0.10,
+            "target_selection": null,
+            "border_efficiency": null,
+            "survival_instinct": 0.30,
+            "power_management": null,
+            "opportunity_recognition": -0.20,
+            "multi_enemy_awareness": null,
+            "map_position": null,
+            "aggression_balance": null
+        },
+        "human_ratings": null,
+        "timestamp": 1740319200.0,
+        "priority": 0.88
+    }
+]
