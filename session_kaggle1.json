@@ -1,17 +1,17 @@
 {
   "metadata": {
     "account_name": "kaggle1",
-    "session_date": "2026-02-23T18:51:05.183565",
-    "duration_minutes": 0.023232332865397134,
+    "session_date": "2026-02-23T21:34:45.851166",
+    "duration_minutes": 0.03371026118596395,
     "phase": "phase_1_human_teacher",
     "difficulty": "easy",
-    "total_games_ever": 11
+    "total_games_ever": 1
   },
   "session_stats": {
     "account_name": "kaggle1",
-    "start_time": 1771872663.7885952,
-    "end_time": 1771872665.1825352,
-    "duration_minutes": 0.023232332865397134,
+    "start_time": 1771882483.8256536,
+    "end_time": 1771882485.8482692,
+    "duration_minutes": 0.03371026118596395,
     "games_played": 1,
     "games_won": 0,
     "games_lost": 1,
@@ -19,16 +19,16 @@
     "total_moves": 60,
     "total_random_moves": 0,
     "total_smart_moves": 0,
-    "total_reward": 83.89999999999998,
-    "avg_reward": 83.89999999999998,
-    "best_game_reward": 83.89999999999998,
-    "worst_game_reward": 83.89999999999998,
-    "best_territory": 0.6800000000000002,
+    "total_reward": 47.70000000000002,
+    "avg_reward": 47.70000000000002,
+    "best_game_reward": 47.70000000000002,
+    "worst_game_reward": 47.70000000000002,
+    "best_territory": 0.44,
     "reward_per_game": [
-      83.89999999999998
+      47.70000000000002
     ],
     "territory_per_game": [
-      0.6800000000000002
+      0.44
     ],
     "factor_averages": {
       "territory_change": 0.0,
@@ -44,28 +44,28 @@
     },
     "game_results": [
       {
-        "game_id": 11,
+        "game_id": 1,
         "won": false,
         "moves": 60,
-        "total_reward": 83.89999999999998,
-        "final_territory": 0.6800000000000002,
+        "total_reward": 47.70000000000002,
+        "final_territory": 0.44,
         "difficulty": "easy",
         "phase": "phase_1_human_teacher",
-        "timestamp": 1771872665.1605937
+        "timestamp": 1771882485.8243394
       }
     ]
   },
   "curriculum_state": {
     "phase": "phase_1_human_teacher",
     "difficulty": "easy",
-    "total_games": 11,
+    "total_games": 1,
     "promotion_progress": {
       "current_difficulty": "easy",
       "next_difficulty": "medium",
       "games_played": {
-        "current": 11,
+        "current": 1,
         "needed": 50,
-        "progress": 0.22
+        "progress": 0.02
       },
       "win_rate": {
         "current": 0.0,
@@ -77,12 +77,12 @@
         "needed": 5,
         "progress": 0.0
       },
-      "overall_progress": 0.066
+      "overall_progress": 0.006
     }
   },
   "model_info": {
-    "epsilon": 0.7213854699197644,
-    "steps_done": 660,
+    "epsilon": 0.9831395048898272,
+    "steps_done": 60,
     "episodes_done": 0,
     "memory_size": 60
   },
@@ -110,5 +110,5 @@
     "map_position": 0.0,
     "aggression_balance": 0.0
   },
-  "last_updated": 1771872665.1836188
+  "last_updated": 1771882485.8512216
 }
