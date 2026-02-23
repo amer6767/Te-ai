@@ -1,17 +1,17 @@
 {
   "metadata": {
     "account_name": "kaggle1",
-    "session_date": "2026-02-23T17:20:16.532235",
-    "duration_minutes": 0.021054192384084066,
+    "session_date": "2026-02-23T17:20:26.099325",
+    "duration_minutes": 0.02673372030258179,
     "phase": "phase_1_human_teacher",
     "difficulty": "easy",
     "total_games_ever": 1
   },
   "session_stats": {
     "account_name": "kaggle1",
-    "start_time": 1771867215.2659285,
-    "end_time": 1771867216.52918,
-    "duration_minutes": 0.021054192384084066,
+    "start_time": 1771867224.4924595,
+    "end_time": 1771867226.0964828,
+    "duration_minutes": 0.02673372030258179,
     "games_played": 1,
     "games_won": 0,
     "games_lost": 1,
@@ -19,16 +19,16 @@
     "total_moves": 60,
     "total_random_moves": 0,
     "total_smart_moves": 0,
-    "total_reward": 71.20000000000002,
-    "avg_reward": 71.20000000000002,
-    "best_game_reward": 71.20000000000002,
-    "worst_game_reward": 71.20000000000002,
-    "best_territory": 0.5500000000000002,
+    "total_reward": 89.50000000000009,
+    "avg_reward": 89.50000000000009,
+    "best_game_reward": 89.50000000000009,
+    "worst_game_reward": 89.50000000000009,
+    "best_territory": 0.6700000000000003,
     "reward_per_game": [
-      71.20000000000002
+      89.50000000000009
     ],
     "territory_per_game": [
-      0.5500000000000002
+      0.6700000000000003
     ],
     "factor_averages": {
       "territory_change": 0.0,
@@ -47,11 +47,11 @@
         "game_id": 1,
         "won": false,
         "moves": 60,
-        "total_reward": 71.20000000000002,
-        "final_territory": 0.5500000000000002,
+        "total_reward": 89.50000000000009,
+        "final_territory": 0.6700000000000003,
         "difficulty": "easy",
         "phase": "phase_1_human_teacher",
-        "timestamp": 1771867216.5096438
+        "timestamp": 1771867226.0745275
       }
     ]
   },
@@ -110,5 +110,5 @@
     "map_position": 0.0,
     "aggression_balance": 0.0
   },
-  "last_updated": 1771867216.5322878
+  "last_updated": 1771867226.0993762
 }
