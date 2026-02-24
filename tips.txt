@@ -1,0 +1,111 @@
+Here are the key game mechanics for a simple but yet mildly challenging .io game!
+
+
+**Land:** Amount of pixels you have in the map you're playing. Shown in the leaderboard next to your name (image 3)
+
+**Troops:** Shown at the top of your screen (image 1)
+
+**Tick:** Small "block" next to your balance at the top of your screen (image 1) that gives you interest. A tick consist of 10 sub Ticks.
+**Cycle:** A cycle consists of 10 Ticks. At the start of a cycle you gain income based on your current land. At the end of a cycle you can see a full white bar next to your balance but at the start of a cycle you see none.
+
+**Density:** Density is calculated by troops / land, It tells the amount of troops that you have per pixel. The maximum Density you can have is 150 which also is the maximum amount of Troops you can have (troop cap). Having more troops per pixel (density) makes your land harder to conquer, this is why you should prioritize big enemies with low amount of troops.
+
+**Land income:** You gain "land income" at the start of a cycle based on your current land
+
+**Interest:** You gain "interest income" every Tick. Interest % is shown at the top right of your screen (image 2). You gain the interest % of your troops as income
+
+**Red interest:** Red interest is shown when your balance font goes red aswell your Interest %. You slowly start gaining less interest income in red interest and you will completely stop gaining any income at 150 density aka. 0.00% interest. You should avoid going into red interest at early-mid game to maximize income.
+
+**Important land speed boosts:**
+**10kl - Important** in early game where you can outpace your opponents by attacking bots
+**60kl - Very important** in mid game for scaling up in land and taking out weak opponents fast
+**160kl - Fairly important** in end game
+Openings, a crucial step in the early game to assert a good spawn at early game. In this lesson we are focused on teaching you how to do a basic opening.
+
+**Greenbiscuit Opening**, use the - and + buttons on the troop slider (image 1):
+
+Cycle | Steps    | %    | Tick | Expected land
+1             ------   |30%|    7    |           112
+2            ++          |35%|     7   |           312
+3            -            |32%|     7    |           612
+4            -            |30%|     7    |          1104
+5            +++++   |46%|     6    |          2244
+
+Tick 7 is the position in image 2
+Tick 6 is the position in image 3
+after the opening, follow the guide in <#1394314999954145403>
+
+**To practice:** Open Singleplayer, Black Arena, set players to 1, Set "Additional income"  as default
+
+**Repeat** until you get the same results as the tutorial above and try it in Multiplayer! Congratulations, you have executed an opening and next you should read https://discord.com/channels/1253443688537788578/1322288628126449735 and https://discord.com/channels/1253443688537788578/1322287591046774874
+"Infinite expansion" starts after the opening phase at 0:30 (tick ~3), where you want to attack neutral land with 30-35% so that your ongoing attack never ends. On the next cycle after starting infinite expansion (cycle 7) start attacking with 30-35% at tick 3 and repeat on the next cycles until you have no more neutral land to be attacked.
+
+If you execute infinite expansion perfectly you get maximum value without attacking any bots. However you need a good opening like greenbiscuit opening in <#1322287094768468058> to pair with a good infinite expansion.
+# HOW TO CHOOSE A SPAWN
+If these criteria match for a spot, take it
+1. Alot of neutral land, this helps to get a bigger start with a troop and land advantage (image 1)
+2. Not many players near, make sure you still aren't surrounded by the enemy team and take a spawn with a balance of allies and different teams
+3. Bots, if you have enemy bots at the spawn then take it to get more land and troops later on
+4. If possible, try spawning near water for boating access to open more opportunities to grow.
+
+Aim for spots like in the image below. Look for locations that the bots around shape it to look like a cross / circle / plus sign (+) / a snake.
+
+
+Strategy for spawning in contests is the same but all spawns aka. "pockets" will be smaller due to the high player count. Choosing a spawn at the start of the game is recommended for securing a good spot and scaring away others!
+
+You learn to recognize spawns after some pratice, so don't panic if you can't find spawns right away.
+**To practice:** Open Singleplayer, Open any map, Loop for any spawns that resemble the shapes mentioned above, Set the spawning seed something different everytime
+# HOW TO CHOOSE A SPAWN
+If these criteria match for a spot, take it
+1. Alot of neutral land, this helps to get a bigger start with a troop and land advantage (image 1)
+2. Not many players near, make sure you still aren't surrounded by the enemy team and take a spawn with a balance of allies and different teams
+3. Bots, if you have enemy bots at the spawn then take it to get more land and troops later on
+4. If possible, try spawning near water for boating access to open more opportunities to grow.
+
+Aim for spots like in the image below. Look for locations that the bots around shape it to look like a cross / circle / plus sign (+) / a snake.
+
+
+Strategy for spawning in contests is the same but all spawns aka. "pockets" will be smaller due to the high player count. Choosing a spawn at the start of the game is recommended for securing a good spot and scaring away others!
+
+You learn to recognize spawns after some pratice, so don't panic if you can't find spawns right away.
+**To practice:** Open Singleplayer, Open any map, Loop for any spawns that resemble the shapes mentioned above, Set the spawning seed something different everytime
+RECOMMENDED OPENING FOR MULTIPLAYER OPENING
+
+After reading the basic opening guide above, you should learn and start using the best opening for mobile that is possible in native Territorial.io
+
+ **freddo opening / "bootleg gbv3"**
+
+Please note: CYCLE 4: after attacking on cycle 3 change your troop slider to 28% with "s", attack at tick 6, 37% with "ww" at tick ~8.5 and tick 10 **ALL IN THE SAME CYCLE**
+
+CYCLE 5: Change your troop slider once again to 28% attack when the white bar is around here in the replied image then quickly change to 32% attack, wait until the bar is almost at the end and then attack with 32%
+
+MOBILE:
+Cycle | %   | Tick | Expected land
+1         30%|     7     |           112
+2        35%|     7      |          312
+3        32%|     7      |          612
+Cycle |         %s            |        Tick        | Expected land
+4        30%, 35%, 35%|     6,8,9          |          1740
+5        30%, 32%, 32%|     6,8.5,10     |          3120
+
+Watch the youtube video below for a good visual tutorial. Practice the like said above and after about 30mins - 1h you have mastered the opening, Congratulations! 
+RECOMMENDED OPENING FOR MULTIPLAYER OPENING
+
+After reading the basic opening guide above, you should learn and start using the best opening for mobile that is possible in native Territorial.io
+
+ **freddo opening / "bootleg gbv3"**
+
+Please note: CYCLE 4: after attacking on cycle 3 change your troop slider to 28% with "s", attack at tick 6, 37% with "ww" at tick ~8.5 and tick 10 **ALL IN THE SAME CYCLE**
+
+CYCLE 5: Change your troop slider once again to 28% attack when the white bar is around here in the replied image then quickly change to 32% attack, wait until the bar is almost at the end and then attack with 32%
+
+MOBILE:
+Cycle | %   | Tick | Expected land
+1         30%|     7     |           112
+2        35%|     7      |          312
+3        32%|     7      |          612
+Cycle |         %s            |        Tick        | Expected land
+4        30%, 35%, 35%|     6,8,9          |          1740
+5        30%, 32%, 32%|     6,8.5,10     |          3120
+
+Watch the youtube video below for a good visual tutorial. Practice the like said above and after about 30mins - 1h you have mastered the opening, Congratulations!

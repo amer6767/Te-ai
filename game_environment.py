@@ -478,15 +478,19 @@ class TerritorialEnvironment:
     # STEP — The core game loop tick
     # ------------------------------------------
 
-    async def step(self, action_dict: dict) -> tuple:
+    async def step(self, command: dict) -> tuple:
         """
         Execute one game step. The logic is:
         
         1. Read full game state (troops, time, cycle, tick, interest)
         2. If Cycles 1-5: execute Greenbiscuit opening at exact ticks
         3. If Red Interest: force defend (wait, recover troops)
-        4. If Cycle 6+: "infinite expansion" at tick 3, else let NN decide
+        4. If Cycle 6+: "infinite expansion" at tick 3, else LLM decides
         5. Use smart pixel targeting for all clicks
+        
+        Args:
+            command: dict from LLMCommander.decide() with keys:
+                     "direction" (str) and "slider_pct" (int)
         
         Returns:
             (screenshot, reward, done, info)
@@ -509,7 +513,7 @@ class TerritorialEnvironment:
         self.last_interest = interest
 
         # ============================================
-        # 2. DECIDE ACTION — Opening vs Neural Net
+        # 2. DECIDE ACTION — Opening vs LLM Commander
         # ============================================
         action_taken = "wait"
         click_x, click_y = None, None
@@ -527,12 +531,12 @@ class TerritorialEnvironment:
             # Mark opening complete after cycle 5
             if self.current_cycle >= 5 and len(self.opening_attacks_done) >= 5:
                 self.opening_complete = True
-                print("   🎯 Opening complete! Switching to neural net + infinite expansion")
+                print("   🎯 Opening complete! Switching to LLM Commander + infinite expansion")
         
-        # --- POST-OPENING: Infinite Expansion + Neural Net ---
+        # --- POST-OPENING: Infinite Expansion + LLM Commander ---
         else:
             action_taken, click_x, click_y, slider_used = await self._execute_post_opening(
-                action_dict
+                command
             )
 
         # ============================================
@@ -656,31 +660,35 @@ class TerritorialEnvironment:
         return ("wait_for_tick", None, None, 0)
 
     # ------------------------------------------
-    # POST-OPENING LOGIC (Infinite Expansion + NN)
+    # POST-OPENING LOGIC (Infinite Expansion + LLM)
     # ------------------------------------------
 
-    async def _execute_post_opening(self, action_dict: dict) -> tuple:
+    async def _execute_post_opening(self, command: dict) -> tuple:
         """
         After the opening is complete (Cycle 6+):
         
         1. At Tick ~3 each cycle: "infinite expansion" — 
-           attack neutral land with 30-35%
-        2. Other ticks: let the neural network decide
-        3. Always use smart targeting for clicks
+           auto-attack neutral land with 30-35% (saves LLM calls)
+        2. Other ticks: execute the LLM Commander's direction + slider
+        3. Uses SmartTargeting.get_target_in_direction() for precise clicks
+        
+        Args:
+            command: dict from LLMCommander.decide() with:
+                     "direction" (str, e.g. "north", "south-east", "wait")
+                     "slider_pct" (int, 0-100)
         
         Returns:
             (action_name, click_x, click_y, slider_pct)
         """
-        action_type = action_dict.get("action_type", "wait")
+        direction = command.get("direction", "wait")
+        slider_pct = command.get("slider_pct", 0)
         
-        # --- Infinite Expansion at Tick 3 ---
+        # --- Infinite Expansion at Tick 2-4 (auto, no LLM needed) ---
         if self.current_tick in (2, 3, 4):
-            # Time to expand! Use 30-35% slider
             expand_slider = random.choice([30, 32, 35])
             await set_slider(self.page, expand_slider)
             await self.page.wait_for_timeout(100)
             
-            # Smart target: prefer neutral land borders
             screenshot = await self.get_screenshot()
             target_x, target_y = SmartTargeting.get_best_target(
                 screenshot, preferred_type="neutral"
@@ -689,46 +697,21 @@ class TerritorialEnvironment:
             await self.page.mouse.click(target_x, target_y)
             return ("infinite_expand", target_x, target_y, expand_slider)
         
-        # --- Neural Net decides ---
-        if action_type == "click":
-            slider_pct = EXPAND_PCT
-            await set_slider(self.page, slider_pct)
-            
-            # Get NN's suggested coordinates
-            screen_x = action_dict.get("screen_x", 0.5)
-            screen_y = action_dict.get("screen_y", 0.5)
-            
-            # Use smart raycast targeting, but bias ray angle toward NN's suggestion
-            screenshot = await self.get_screenshot()
-            
-            # The NN suggests a point on screen
-            nn_px = int(640 + (screen_x - 0.5) * 800)
-            nn_py = int(450 + (screen_y - 0.5) * 600)
-            
-            # Get the exact base border using a raycast
-            target_x, target_y = SmartTargeting.get_best_target(screenshot)
-            
-            # (In a fully integrated version, we could shoot the ray specifically 
-            # toward nn_px, nn_py, but for now the foolproof raycast works perfectly)
-            
-            await self.page.mouse.click(target_x, target_y)
-            return ("nn_click", target_x, target_y, slider_pct)
+        # --- LLM Commander decides ---
+        if direction == "wait":
+            return ("llm_wait", None, None, 0)
         
-        elif action_type == "expand":
-            await set_slider(self.page, EXPAND_PCT)
-            screenshot = await self.get_screenshot()
-            target_x, target_y = SmartTargeting.get_best_target(
-                screenshot, preferred_type="neutral"
-            )
-            await self.page.mouse.click(target_x, target_y)
-            return ("nn_expand", target_x, target_y, EXPAND_PCT)
+        # Attack in the direction the LLM chose
+        await set_slider(self.page, slider_pct)
+        await self.page.wait_for_timeout(100)
         
-        elif action_type == "defend":
-            await set_slider(self.page, 10)
-            return ("nn_defend", None, None, 10)
+        screenshot = await self.get_screenshot()
+        target_x, target_y = SmartTargeting.get_target_in_direction(
+            screenshot, direction
+        )
         
-        else:  # wait
-            return ("nn_wait", None, None, 0)
+        await self.page.mouse.click(target_x, target_y)
+        return (f"llm_attack_{direction}", target_x, target_y, slider_pct)
 
     # ------------------------------------------
     # SCREENSHOT
@@ -794,17 +777,11 @@ async def demo():
             print(f"✅ Game started! Screenshot size: {screenshot.size}")
 
             for step in range(20):
-                action = {
-                    "action_type": random.choice(["click", "expand", "wait"]),
-                    "action_index": random.randint(0, 255),
-                    "screen_x": random.uniform(0.2, 0.8),
-                    "screen_y": random.uniform(0.2, 0.8),
-                    "grid_row": random.randint(0, 15),
-                    "grid_col": random.randint(0, 15),
-                    "was_random": True,
-                    "confidence": 0.0,
+                command = {
+                    "direction": random.choice(["north", "south", "east", "west", "wait"]),
+                    "slider_pct": random.randint(10, 60),
                 }
-                screenshot, reward, done, info = await env.step(action)
+                screenshot, reward, done, info = await env.step(command)
                 print(f"  Step {step+1}: C{info['cycle']}:T{info['tick']} | "
                       f"territory={info['territory']:.2%} | troops={info['troops']} | "
                       f"action={info['action_taken']} | reward={reward:.2f}")

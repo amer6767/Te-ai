@@ -1,28 +1,23 @@
 """
 =============================================================================
-run_session.py — Single-File Session Launcher for Territorial.io AI
+run_session.py — Main Game Loop for Territorial.io LLM AI
 =============================================================================
 
-This is THE file to run on each Colab/Kaggle account to start training.
+THE file to run on Kaggle/Colab. This is the Grand Finale that glues
+everything together:
 
-What it does:
-1. Detects which account this is (from hostname or asks user)
-2. Installs Playwright if not installed
-3. Pulls latest master_model.json from GitHub
-4. Loads master model weights into brain.py's GameAgent
-5. Launches Playwright browser via game_environment.py
-6. Runs 10 games via trainer.py
-7. Saves session file
-8. Exports unrated moves to review_queue.json
-9. Pushes session file to GitHub
-
-Usage on Colab:
-    !pip install playwright
-    !playwright install chromium
-    !python run_session.py --account colab1
+  1. Loads the LLM Commander (8B model in 4-bit)
+  2. Launches Playwright browser → Territorial.io
+  3. Runs an async game loop:
+       Radar → LLM → Command → Click → Repeat
 
 Usage on Kaggle:
-    Add to a Kaggle notebook cell and run.
+    !pip install playwright transformers bitsandbytes accelerate
+    !playwright install chromium
+    !python run_session.py
+
+Usage locally:
+    python run_session.py --games 5 --headed
 
 =============================================================================
 """
@@ -33,29 +28,29 @@ Usage on Kaggle:
 
 import os
 import sys
-import json
+import asyncio
+import argparse
 import time
 import subprocess
-import platform
-import argparse
-import socket
+
+from playwright.async_api import async_playwright
+
+from llm_commander import LLMCommander
+from game_environment import TerritorialEnvironment, get_state
+from screen_capture import ScreenCapture
 
 
 # ==============================================
 # CONFIGURATION
 # ==============================================
 
-CONFIG_FILE = "config.json"
-DEFAULT_GAMES = 10
-
-# Account detection: map hostname patterns to account names
-HOSTNAME_MAP = {
-    # These are just defaults; user can always specify --account
-}
+DEFAULT_GAMES = 3          # Games per session
+MAX_STEPS_PER_GAME = 200   # Safety cap per game
+LLM_CALL_INTERVAL = 3      # Only call LLM every N steps (save GPU time)
 
 
 # ==============================================
-# SETUP FUNCTIONS
+# SETUP HELPERS
 # ==============================================
 
 def detect_platform() -> str:
@@ -67,41 +62,8 @@ def detect_platform() -> str:
     return "local"
 
 
-def detect_account(platform_name: str) -> str:
-    """
-    Try to auto-detect which account this is based on hostname.
-    Falls back to asking the user.
-    """
-    hostname = socket.gethostname()
-
-    # Check hostname map
-    if hostname in HOSTNAME_MAP:
-        return HOSTNAME_MAP[hostname]
-
-    # Try environment variable
-    account = os.environ.get("TERRITORIAL_ACCOUNT")
-    if account:
-        return account
-
-    # Ask the user
-    print("\n🔍 Could not auto-detect account name.")
-    print("   Available accounts: colab1, colab2, colab3, colab4, kaggle1, kaggle2")
-
-    while True:
-        try:
-            account = input("   Enter account name: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print("\n   Using default: colab1")
-            return "colab1"
-
-        valid_accounts = ["colab1", "colab2", "colab3", "colab4", "kaggle1", "kaggle2"]
-        if account in valid_accounts:
-            return account
-        print(f"   ⚠️ Invalid account. Choose from: {', '.join(valid_accounts)}")
-
-
 def install_playwright():
-    """Install Playwright and Chromium if not already installed."""
+    """Install Playwright and Chromium if needed."""
     try:
         import playwright
         print("   ✅ Playwright already installed")
@@ -109,14 +71,14 @@ def install_playwright():
         print("   📦 Installing Playwright...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "playwright", "-q"])
 
-    # Install Chromium browser
     print("   🌐 Ensuring Chromium is installed...")
     try:
-        subprocess.check_call([sys.executable, "-m", "playwright", "install", "chromium"],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         print("   ✅ Chromium ready")
     except subprocess.CalledProcessError:
-        # On some platforms, need system deps first
         try:
             subprocess.check_call(
                 [sys.executable, "-m", "playwright", "install-deps", "chromium"],
@@ -129,192 +91,198 @@ def install_playwright():
             print("   ✅ Chromium ready (with deps)")
         except Exception as e:
             print(f"   ⚠️ Chromium install issue: {e}")
-            print("   Continuing anyway — may work if already installed")
 
 
-def load_config() -> dict:
-    """Load configuration from config.json."""
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    return {}
+# ==============================================
+# THE MAIN GAME LOOP
+# ==============================================
 
+async def play_one_game(
+    env: TerritorialEnvironment,
+    commander: LLMCommander,
+    capture: ScreenCapture,
+    game_num: int,
+) -> dict:
+    """
+    Play a single game of Territorial.io with the LLM Commander.
 
-def pull_master_model():
-    """Pull the latest master model from GitHub."""
-    try:
-        from sync import GitHubSync
-        sync = GitHubSync()
-        print("\n🔄 Pulling latest master model from GitHub...")
-        success = sync.pull_master()
-        if success:
-            print("   ✅ Master model pulled successfully")
-        else:
-            print("   ⚠️ No master model on GitHub yet — starting fresh")
-        return success
-    except ImportError:
-        print("   ⚠️ sync.py not available — skipping GitHub pull")
-        return False
-    except Exception as e:
-        print(f"   ⚠️ Could not pull master model: {e}")
-        return False
+    Flow per step:
+      1. ScreenCapture → radar_text
+      2. get_state() → troops, interest, etc.
+      3. LLMCommander.decide(state, radar) → {"direction", "slider_pct"}
+      4. env.step(command) → screenshot, reward, done, info
 
+    The LLM is only called every LLM_CALL_INTERVAL steps to save GPU.
+    Between calls, the last command is reused (the environment's own
+    infinite-expansion handles ticks 2-4 anyway).
 
-def load_master_weights(agent):
-    """Load master model weights into the agent if available."""
-    import torch
+    Returns:
+        dict with game stats
+    """
+    print(f"\n{'='*55}")
+    print(f"🎮 GAME {game_num} — Starting...")
+    print(f"{'='*55}")
 
-    master_model_json = "master_model.json"
-    if os.path.exists(master_model_json):
+    game_start = time.time()
+
+    # Reset environment (navigate, spawn, zoom out)
+    await env.reset()
+
+    # Re-attach capture to the new page
+    capture.page = env.page
+
+    # Track stats
+    total_reward = 0.0
+    best_territory = 0.0
+    llm_calls = 0
+    last_command = {"direction": "wait", "slider_pct": 0}
+
+    step = 0
+    while step < MAX_STEPS_PER_GAME:
+        step += 1
+
+        # ----- EYES: Get radar scan -----
         try:
-            with open(master_model_json, 'r') as f:
-                master_info = json.load(f)
-
-            weights_path = master_info.get("model_weights_path", "models/master_model.pth")
-            if os.path.exists(weights_path):
-                agent.load_model(weights_path)
-                print(f"   ✅ Loaded master model weights from {weights_path}")
-                return True
-            else:
-                print(f"   ⚠️ Model weights file not found: {weights_path}")
+            frame = await capture.get_processed_frame()
+            radar_text = frame["radar_text"]
         except Exception as e:
-            print(f"   ⚠️ Could not load master weights: {e}")
+            print(f"   ⚠️ Capture error at step {step}: {e}")
+            radar_text = "North: Unknown | South: Unknown | East: Unknown | West: Unknown"
 
-    # Try account-specific model
-    return False
+        # ----- BRAIN: Ask LLM (every N steps) -----
+        if step % LLM_CALL_INTERVAL == 1 or step == 1:
+            try:
+                game_state = await get_state(env.page)
+                # Inject cycle/tick so the LLM sees them
+                game_state["cycle"] = env.current_cycle
+                game_state["tick"] = env.current_tick
+                command = commander.decide(game_state, radar_text)
+                last_command = command
+                llm_calls += 1
+            except Exception as e:
+                print(f"   ⚠️ LLM error at step {step}: {e}")
+                command = last_command
+        else:
+            command = last_command
+
+        # ----- HANDS: Execute the command -----
+        try:
+            screenshot, reward, done, info = await env.step(command)
+        except Exception as e:
+            print(f"   ❌ Step error: {e}")
+            break
+
+        total_reward += reward
+        territory = info.get("territory", 0.0)
+        best_territory = max(best_territory, territory)
+
+        # Log every 10 steps
+        if step % 10 == 0:
+            print(
+                f"   📊 Step {step:3d} | "
+                f"C{info.get('cycle', '?')}:T{info.get('tick', '?')} | "
+                f"Territory: {territory:.2%} | "
+                f"Troops: {info.get('troops', 0):,} | "
+                f"Action: {info.get('action_taken', '?')} | "
+                f"Reward: {reward:+.2f}"
+            )
+
+        if done:
+            won = info.get("won", False)
+            reason = "🏆 VICTORY!" if won else "💀 Game Over"
+            print(f"\n   {reason} at step {step}")
+            break
+
+    game_time = time.time() - game_start
+
+    stats = {
+        "game": game_num,
+        "steps": step,
+        "total_reward": round(total_reward, 2),
+        "best_territory": round(best_territory, 4),
+        "llm_calls": llm_calls,
+        "game_time_s": round(game_time, 1),
+        "won": info.get("won", False) if 'info' in dir() else False,
+    }
+
+    print(f"\n   📈 Game {game_num} Summary:")
+    print(f"      Steps: {stats['steps']} | Best Territory: {stats['best_territory']:.2%}")
+    print(f"      LLM Calls: {stats['llm_calls']} | Time: {stats['game_time_s']:.0f}s")
+
+    return stats
 
 
-def push_results(account_name: str):
-    """Push session file and review queue to GitHub."""
-    try:
-        from sync import GitHubSync
-        sync = GitHubSync()
-
-        print("\n🔄 Syncing results to GitHub...")
-        sync.push_session(account_name)
-        print("   ✅ Session data pushed")
-
-    except ImportError:
-        print("   ⚠️ sync.py not available — skipping GitHub push")
-    except Exception as e:
-        print(f"   ⚠️ Could not push results: {e}")
-
-
-def export_unrated_moves(recorder):
-    """Export unrated moves to the review queue."""
-    try:
-        recorder.export_unrated()
-    except Exception as e:
-        print(f"   ⚠️ Could not export unrated moves: {e}")
-
-
-# ==============================================
-# MAIN SESSION RUNNER
-# ==============================================
-
-def run_session(account_name: str, num_games: int = DEFAULT_GAMES,
-                use_real_game: bool = False):
+async def main(num_games: int = DEFAULT_GAMES, headless: bool = True):
     """
-    Run a full training session.
-    
-    Args:
-        account_name: e.g., "colab1", "kaggle2"
-        num_games:    How many games to play
-        use_real_game: If True, use TerritorialEnvironment (Playwright).
-                       If False, use FakeGameEnvironment (testing).
+    The Grand Finale: load LLM, launch browser, play games.
     """
-    start_time = time.time()
+    session_start = time.time()
 
     print("\n" + "=" * 60)
-    print(f"🚀 TERRITORIAL.IO AI — SESSION LAUNCHER")
-    print(f"=" * 60)
-    print(f"  Account:   {account_name}")
-    print(f"  Games:     {num_games}")
+    print("🚀 TERRITORIAL.IO — LLM COMMANDER SESSION")
+    print("=" * 60)
     print(f"  Platform:  {detect_platform()}")
-    print(f"  Real game: {use_real_game}")
+    print(f"  Games:     {num_games}")
+    print(f"  Headless:  {headless}")
+    print(f"  LLM Call Interval: every {LLM_CALL_INTERVAL} steps")
 
-    # --- Step 1: Install requirements ---
-    if use_real_game:
-        print("\n📦 Step 1: Installing requirements...")
-        install_playwright()
-    else:
-        print("\n📦 Step 1: Using FakeGameEnvironment (no Playwright needed)")
+    # ---- Step 1: Load the LLM ----
+    print("\n🧠 Step 1: Loading LLM Commander...")
+    commander = LLMCommander()
+    print(f"   ✅ LLM ready")
 
-    # --- Step 2: Pull latest master model ---
-    print("\n📥 Step 2: Pulling latest master model...")
-    pull_master_model()
+    # ---- Step 2: Launch Browser ----
+    print("\n🌐 Step 2: Launching browser...")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=headless,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
 
-    # --- Step 3: Load AI agent and master weights ---
-    print("\n🧠 Step 3: Loading AI agent...")
-    from brain import GameAgent
-    agent = GameAgent()
-    load_master_weights(agent)
+        env = TerritorialEnvironment(browser)
 
-    # --- Step 4: Run training session ---
-    print(f"\n🎮 Step 4: Running {num_games} games...")
+        # We create a temporary ScreenCapture — page will be reassigned after reset()
+        capture = ScreenCapture(None)
 
-    from trainer import SessionTrainer
-    trainer = SessionTrainer(account_name=account_name, use_real_game=use_real_game)
+        # ---- Step 3: Play Games ----
+        print(f"\n🎮 Step 3: Playing {num_games} games...\n")
+        all_stats = []
 
-    # If we loaded master weights, apply them
-    if os.path.exists("models/master_model.pth"):
-        try:
-            trainer.agent.load_model("models/master_model.pth")
-        except Exception:
-            pass  # Already tried loading above
+        for game_num in range(1, num_games + 1):
+            try:
+                stats = await play_one_game(env, commander, capture, game_num)
+                all_stats.append(stats)
+            except Exception as e:
+                print(f"\n   ❌ Game {game_num} crashed: {e}")
+                import traceback
+                traceback.print_exc()
 
-    trainer.run_session(num_games=num_games)
+        # ---- Cleanup ----
+        await env.close()
+        await browser.close()
 
-    # --- Step 5: Export unrated moves ---
-    print("\n📋 Step 5: Exporting unrated moves to review queue...")
-    from move_recorder import MoveRecorder
-    recorder = MoveRecorder(account_name)
+    # ---- Step 4: Session Summary ----
+    session_time = time.time() - session_start
 
-    # Build session file
-    session_filepath = f"session_{account_name}.json"
-    session_data = trainer._compile_session_data()
-
-    # Add extra fields for the session file format
-    session_data["session_name"] = account_name
-    session_data["platform"] = detect_platform()
-    session_data["total_games_played"] = trainer.stats.games_played
-    session_data["win_rate"] = trainer.stats.win_rate
-    session_data["current_phase"] = trainer.curriculum.get_current_phase().value
-    session_data["current_difficulty"] = trainer.curriculum.get_current_difficulty().value
-    session_data["model_checkpoint_path"] = f"models/model_{account_name}.pth"
-    session_data["best_strategies"] = []
-    session_data["mistakes_to_avoid"] = []
-    session_data["greenbiscuit_stats"] = {"following_opening": True}
-    session_data["factor_averages"] = trainer.stats.get_factor_averages()
-    session_data["last_updated"] = time.time()
-
-    with open(session_filepath, 'w') as f:
-        json.dump(session_data, f, indent=2, default=str)
-    print(f"   💾 Session saved: {session_filepath}")
-
-    # --- Step 6: Push results to GitHub ---
-    print("\n🔄 Step 6: Pushing results to GitHub...")
-    push_results(account_name)
-
-    # --- Step 7: Print final summary ---
-    elapsed = time.time() - start_time
     print(f"\n{'='*60}")
-    print(f"🏁 SESSION COMPLETE — {account_name}")
+    print(f"🏁 SESSION COMPLETE")
     print(f"{'='*60}")
-    print(f"  ⏱️  Duration:        {elapsed / 60:.1f} minutes")
-    print(f"  🎮 Games Played:    {trainer.stats.games_played}")
-    print(f"  🏆 Wins:            {trainer.stats.games_won}")
-    print(f"  💀 Losses:          {trainer.stats.games_lost}")
-    print(f"  📈 Win Rate:        {trainer.stats.win_rate:.1%}")
-    print(f"  🗺️  Best Territory:  {trainer.stats.best_territory:.1%}")
-    worst_terr = min(trainer.stats.territory_per_game) if trainer.stats.territory_per_game else 0
-    avg_terr = sum(trainer.stats.territory_per_game) / len(trainer.stats.territory_per_game) if trainer.stats.territory_per_game else 0
-    print(f"  📉 Worst Territory: {worst_terr:.1%}")
-    print(f"  📊 Avg Territory:   {avg_terr:.1%}")
-    print(f"  📋 Moves needing review: {recorder.get_unrated_count()}")
-    print(f"  🎓 Current Phase:   {trainer.curriculum.get_current_phase().value}")
-    print(f"  ⚡ Current Difficulty: {trainer.curriculum.get_current_difficulty().value}")
-    print(f"{'='*60}")
+
+    if all_stats:
+        wins = sum(1 for s in all_stats if s.get("won"))
+        avg_territory = sum(s["best_territory"] for s in all_stats) / len(all_stats)
+        total_llm = sum(s["llm_calls"] for s in all_stats)
+
+        print(f"  ⏱️  Duration:         {session_time / 60:.1f} minutes")
+        print(f"  🎮 Games Played:     {len(all_stats)}")
+        print(f"  🏆 Wins:             {wins}")
+        print(f"  📊 Avg Best Territory: {avg_territory:.2%}")
+        print(f"  🧠 Total LLM Calls:  {total_llm}")
+        print(f"  📡 LLM Stats:        {commander.get_stats()}")
+    else:
+        print("  No games completed.")
+
+    print(f"{'='*60}\n")
 
 
 # ==============================================
@@ -323,42 +291,29 @@ def run_session(account_name: str, num_games: int = DEFAULT_GAMES,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="🚀 Territorial.io AI — Session Launcher",
+        description="🚀 Territorial.io — LLM Commander Session",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_session.py --account colab1 --games 10
-  python run_session.py --account kaggle1 --games 5 --real
-  python run_session.py  # Auto-detects account
+  python run_session.py                    # 3 games, headless
+  python run_session.py --games 5          # 5 games
+  python run_session.py --games 1 --headed # 1 game, visible browser
         """
     )
 
     parser.add_argument(
-        "--account", "-a",
-        type=str,
-        default=None,
-        help="Account name (colab1-4, kaggle1-2)"
-    )
-    parser.add_argument(
-        "--games", "-g",
-        type=int,
-        default=DEFAULT_GAMES,
+        "--games", "-g", type=int, default=DEFAULT_GAMES,
         help=f"Number of games per session (default: {DEFAULT_GAMES})"
     )
     parser.add_argument(
-        "--real",
-        action="store_true",
-        help="Use real Playwright game environment (default: FakeGameEnvironment)"
+        "--headed", action="store_true",
+        help="Run with visible browser window (default: headless)"
     )
 
     args = parser.parse_args()
 
-    # Detect account if not specified
-    current_platform = detect_platform()
-    account = args.account or detect_account(current_platform)
+    # Ensure Playwright is installed
+    print("\n📦 Checking requirements...")
+    install_playwright()
 
-    run_session(
-        account_name=account,
-        num_games=args.games,
-        use_real_game=args.real,
-    )
+    asyncio.run(main(num_games=args.games, headless=not args.headed))

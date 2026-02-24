@@ -38,8 +38,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 # Pre-quantized 4-bit models — download in seconds, fit 16GB VRAM
 # Ranked by reasoning quality for game-strategy tasks:
 MODEL_CANDIDATES = [
-    "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",   # Best overall reasoning
-    "unsloth/Qwen2.5-7B-Instruct-bnb-4bit",           # Strong alternative
+    "unsloth/DeepSeek-R1-Distill-Llama-8B-bnb-4bit",  # Best reasoning (R1 distill)
+    "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",    # Strong alternative
+    "unsloth/Qwen2.5-7B-Instruct-bnb-4bit",           # Another solid option
 ]
 
 DEFAULT_MODEL_ID = MODEL_CANDIDATES[0]
