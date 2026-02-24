@@ -16,6 +16,7 @@ control to the neural network with smart pixel-based targeting.
 
 from playwright.async_api import async_playwright, Page, Browser
 from PIL import Image
+from screen_capture import ScreenCapture
 import numpy as np
 import asyncio
 import io
@@ -170,9 +171,11 @@ async def set_slider(page: Page, pct: int):
 
 class SmartTargeting:
     """
-    Analyzes game screenshots to find valid attack targets using a Raycast.
-    Instead of guessing colors, it memorizes the exact pixel at the center
-    of the screen (our base), then shoots rays outward to find the border.
+    Analyzes game screenshots to find valid attack targets.
+
+    Supports two targeting modes:
+      - get_best_target():      Raycast from center, find nearest border (any direction)
+      - get_target_in_zone():   Scan inside a specific 3×3 grid zone for attack targets
     """
     
     @staticmethod
@@ -200,90 +203,117 @@ class SmartTargeting:
         # 3. Walk outward from the center like a radar
         for angle in angles:
             rad = math.radians(angle)
-            for dist in range(5, 400, 5): # Jump 5 pixels at a time
+            for dist in range(5, 400, 5):
                 x = int(cx + math.cos(rad) * dist)
                 y = int(cy + math.sin(rad) * dist)
                 
-                # Stop if we hit the UI bars
                 if y < 50 or y > 850 or x < 10 or x > 1270:
                     break
                     
                 current_color = pixels[y, x].astype(int)
-                
-                # Calculate how different the color is from our player color
                 color_diff = sum((current_color - player_color) ** 2)
                 
-                # 4. If the color changes drastically, we hit the border!
                 if color_diff > 1000:
-                    # Click 15 pixels past the border to ensure we hit the enemy/neutral land
                     click_x = int(cx + math.cos(rad) * (dist + 15))
                     click_y = int(cy + math.sin(rad) * (dist + 15))
                     return (click_x, click_y)
         
-        # Fallback (should rarely happen): just click nearby
         return (cx + random.randint(-30, 30), cy + random.randint(-30, 30))
 
-    # --- Direction name → angle lookup ---
-    DIRECTION_ANGLES = {
-        "north": 270, "north-east": 315, "east": 0, "south-east": 45,
-        "south": 90, "south-west": 135, "west": 180, "north-west": 225,
-    }
-
     @staticmethod
-    def get_target_in_direction(image: Image.Image, direction_name: str) -> tuple:
+    def get_target_in_zone(image: Image.Image, zone_id: int) -> tuple:
         """
-        Shoot a SINGLE ray in the specified compass direction and return
-        the (x, y) click coordinate just past the border.
+        Find the best attack target INSIDE a specific zone (1-9).
 
-        This is the bridge between the LLM Commander's text output
-        ("North") and an actual pixel the Playwright can click.
+        Calculates the pixel boundaries of the requested zone, then
+        shoots rays from the center of the screen toward that zone to
+        find the nearest border pixel within the zone's bounds.
+
+        If no border is found inside the zone, falls back to clicking
+        the center of the zone.
 
         Args:
-            image:          PIL Image of the game (1280x900)
-            direction_name: One of "north", "north-east", "east", etc.
+            image:   PIL Image of the game (1280x900)
+            zone_id: Zone number 1-9 from the LLM command
 
         Returns:
-            (pixel_x, pixel_y) — the spot to click, 15px past the border
+            (pixel_x, pixel_y) — the spot to click inside that zone
         """
-        direction_name = direction_name.strip().lower()
+        zone_id = max(1, min(9, zone_id))
 
-        # Validate direction
-        if direction_name not in SmartTargeting.DIRECTION_ANGLES:
-            # Unknown direction → fall back to best available target
-            return SmartTargeting.get_best_target(image)
-
-        angle_deg = SmartTargeting.DIRECTION_ANGLES[direction_name]
-        rad = math.radians(angle_deg)
+        # Get zone boundaries from ScreenCapture
+        x_start, y_start, x_end, y_end = ScreenCapture.get_zone_bounds(zone_id)
+        zone_cx, zone_cy = ScreenCapture.get_zone_center(zone_id)
 
         pixels = np.array(image)
-        cx, cy = VIEWPORT_W // 2, VIEWPORT_H // 2
+        img_h, img_w = pixels.shape[:2]
+        screen_cx, screen_cy = VIEWPORT_W // 2, VIEWPORT_H // 2
 
-        # Memorize our color at dead center
-        player_color = pixels[cy, cx].astype(int)
+        # Memorize our color at center
+        player_color = pixels[screen_cy, screen_cx].astype(int)
 
-        # Walk outward along this single ray
-        for dist in range(5, 400, 5):
-            x = int(cx + math.cos(rad) * dist)
-            y = int(cy + math.sin(rad) * dist)
+        # Shoot a ray from our base (center) toward the zone center
+        dx = zone_cx - screen_cx
+        dy = zone_cy - screen_cy
+        ray_length = math.sqrt(dx * dx + dy * dy)
 
-            # Bounds check — stop at UI bars / screen edges
-            if y < 50 or y > 850 or x < 10 or x > 1270:
+        if ray_length < 1:
+            # Zone 5 (center) — just do a best-target scan
+            return SmartTargeting.get_best_target(image)
+
+        # Normalize direction
+        ndx = dx / ray_length
+        ndy = dy / ray_length
+
+        # Walk along the ray, looking for a border INSIDE the zone
+        best_target = None
+        for dist in range(5, int(ray_length) + 100, 5):
+            x = int(screen_cx + ndx * dist)
+            y = int(screen_cy + ndy * dist)
+
+            # Bounds check
+            if x < 0 or x >= img_w or y < 0 or y >= img_h:
                 break
 
-            current_color = pixels[y, x].astype(int)
-            color_diff = sum((current_color - player_color) ** 2)
+            # Is this pixel inside the target zone?
+            if x_start <= x <= x_end and y_start <= y <= y_end:
+                current_color = pixels[y, x].astype(int)
+                color_diff = sum((current_color - player_color) ** 2)
 
-            if color_diff > 1000:
-                # Border found! Click 15px past it
-                click_x = int(cx + math.cos(rad) * (dist + 15))
-                click_y = int(cy + math.sin(rad) * (dist + 15))
-                # Clamp to safe screen region
-                click_x = max(10, min(1270, click_x))
-                click_y = max(50, min(850, click_y))
-                return (click_x, click_y)
+                if color_diff > 1000:
+                    # Border found inside the zone!
+                    click_x = int(screen_cx + ndx * (dist + 15))
+                    click_y = int(screen_cy + ndy * (dist + 15))
+                    click_x = max(x_start, min(x_end, click_x))
+                    click_y = max(y_start, min(y_end, click_y))
+                    return (click_x, click_y)
 
-        # No border found in this direction — fall back to best target
-        return SmartTargeting.get_best_target(image)
+        # No border found along primary ray — try scanning within the zone
+        # Shoot rays from zone center outward in 8 directions
+        for angle in [0, 45, 90, 135, 180, 225, 270, 315]:
+            rad = math.radians(angle)
+            for dist in range(5, 200, 5):
+                x = int(zone_cx + math.cos(rad) * dist)
+                y = int(zone_cy + math.sin(rad) * dist)
+
+                # Stay inside zone bounds
+                if x < x_start or x > x_end or y < y_start or y > y_end:
+                    break
+                if x < 0 or x >= img_w or y < 0 or y >= img_h:
+                    break
+
+                current_color = pixels[y, x].astype(int)
+                color_diff = sum((current_color - player_color) ** 2)
+
+                if color_diff > 1000:
+                    click_x = int(zone_cx + math.cos(rad) * (dist + 10))
+                    click_y = int(zone_cy + math.sin(rad) * (dist + 10))
+                    click_x = max(x_start, min(x_end, click_x))
+                    click_y = max(y_start, min(y_end, click_y))
+                    return (click_x, click_y)
+
+        # Absolute fallback: click the center of the zone
+        return (zone_cx, zone_cy)
 
 
 # ==============================================
@@ -490,7 +520,7 @@ class TerritorialEnvironment:
         
         Args:
             command: dict from LLMCommander.decide() with keys:
-                     "direction" (str) and "slider_pct" (int)
+                     "target_zone" (int, 1-9 or 0=wait) and "slider_pct" (int)
         
         Returns:
             (screenshot, reward, done, info)
@@ -669,18 +699,18 @@ class TerritorialEnvironment:
         
         1. At Tick ~3 each cycle: "infinite expansion" — 
            auto-attack neutral land with 30-35% (saves LLM calls)
-        2. Other ticks: execute the LLM Commander's direction + slider
-        3. Uses SmartTargeting.get_target_in_direction() for precise clicks
+        2. Other ticks: execute the LLM Commander's zone + slider
+        3. Uses SmartTargeting.get_target_in_zone() for precise clicks
         
         Args:
             command: dict from LLMCommander.decide() with:
-                     "direction" (str, e.g. "north", "south-east", "wait")
+                     "target_zone" (int, 1-9 or 0=wait)
                      "slider_pct" (int, 0-100)
         
         Returns:
             (action_name, click_x, click_y, slider_pct)
         """
-        direction = command.get("direction", "wait")
+        target_zone = command.get("target_zone", 0)
         slider_pct = command.get("slider_pct", 0)
         
         # --- Infinite Expansion at Tick 2-4 (auto, no LLM needed) ---
@@ -698,20 +728,20 @@ class TerritorialEnvironment:
             return ("infinite_expand", target_x, target_y, expand_slider)
         
         # --- LLM Commander decides ---
-        if direction == "wait":
+        if target_zone == 0:
             return ("llm_wait", None, None, 0)
         
-        # Attack in the direction the LLM chose
+        # Attack in the zone the LLM chose
         await set_slider(self.page, slider_pct)
         await self.page.wait_for_timeout(100)
         
         screenshot = await self.get_screenshot()
-        target_x, target_y = SmartTargeting.get_target_in_direction(
-            screenshot, direction
+        target_x, target_y = SmartTargeting.get_target_in_zone(
+            screenshot, target_zone
         )
         
         await self.page.mouse.click(target_x, target_y)
-        return (f"llm_attack_{direction}", target_x, target_y, slider_pct)
+        return (f"llm_attack_zone{target_zone}", target_x, target_y, slider_pct)
 
     # ------------------------------------------
     # SCREENSHOT
@@ -778,7 +808,7 @@ async def demo():
 
             for step in range(20):
                 command = {
-                    "direction": random.choice(["north", "south", "east", "west", "wait"]),
+                    "target_zone": random.choice([0, 1, 2, 3, 4, 6, 7, 8, 9]),
                     "slider_pct": random.randint(10, 60),
                 }
                 screenshot, reward, done, info = await env.step(command)

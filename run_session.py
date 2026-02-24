@@ -128,6 +128,9 @@ async def play_one_game(
     # Reset environment (navigate, spawn, zoom out)
     await env.reset()
 
+    # Tell memory system: new game
+    commander.start_new_game()
+
     # Re-attach capture to the new page
     capture.page = env.page
 
@@ -135,19 +138,19 @@ async def play_one_game(
     total_reward = 0.0
     best_territory = 0.0
     llm_calls = 0
-    last_command = {"direction": "wait", "slider_pct": 0}
+    last_command = {"target_zone": 0, "slider_pct": 0}
 
     step = 0
     while step < MAX_STEPS_PER_GAME:
         step += 1
 
-        # ----- EYES: Get radar scan -----
+        # ----- EYES: Get grid scan -----
         try:
             frame = await capture.get_processed_frame()
-            radar_text = frame["radar_text"]
+            grid_text = frame["grid_text"]
         except Exception as e:
             print(f"   ⚠️ Capture error at step {step}: {e}")
-            radar_text = "North: Unknown | South: Unknown | East: Unknown | West: Unknown"
+            grid_text = "Zone 1: Unknown | Zone 2: Unknown | Zone 3: Unknown | Zone 4: Unknown | Zone 5: Our Territory | Zone 6: Unknown | Zone 7: Unknown | Zone 8: Unknown | Zone 9: Unknown"
 
         # ----- BRAIN: Ask LLM (every N steps) -----
         if step % LLM_CALL_INTERVAL == 1 or step == 1:
@@ -156,7 +159,7 @@ async def play_one_game(
                 # Inject cycle/tick so the LLM sees them
                 game_state["cycle"] = env.current_cycle
                 game_state["tick"] = env.current_tick
-                command = commander.decide(game_state, radar_text)
+                command = commander.decide(game_state, grid_text)
                 last_command = command
                 llm_calls += 1
             except Exception as e:
@@ -166,11 +169,30 @@ async def play_one_game(
             command = last_command
 
         # ----- HANDS: Execute the command -----
+        territory_before = env.prev_territory
+        troops_before = env.last_troops
         try:
             screenshot, reward, done, info = await env.step(command)
         except Exception as e:
             print(f"   ❌ Step error: {e}")
             break
+
+        # ----- REFLECT: Record outcome to memory -----
+        territory_after = info.get("territory", 0.0)
+        troops_after = info.get("troops", 0)
+        action_str = info.get("action_taken", "unknown")
+        try:
+            commander.record_outcome(
+                game_state=game_state if 'game_state' in dir() else {},
+                action_str=action_str,
+                territory_before=territory_before,
+                territory_after=territory_after,
+                troops_before=troops_before,
+                troops_after=troops_after,
+                grid_text=grid_text,
+            )
+        except Exception as e:
+            pass  # Don't crash the game over a memory write failure
 
         total_reward += reward
         territory = info.get("territory", 0.0)
@@ -192,6 +214,14 @@ async def play_one_game(
             reason = "🏆 VICTORY!" if won else "💀 Game Over"
             print(f"\n   {reason} at step {step}")
             break
+
+    # ----- END OF GAME: Save memories -----
+    final_territory = best_territory
+    won = info.get("won", False) if 'info' in dir() else False
+    try:
+        commander.end_game(won=won, final_territory=final_territory * 100)
+    except Exception as e:
+        print(f"   ⚠️ Memory save error: {e}")
 
     game_time = time.time() - game_start
 
@@ -279,6 +309,7 @@ async def main(num_games: int = DEFAULT_GAMES, headless: bool = True):
         print(f"  📊 Avg Best Territory: {avg_territory:.2%}")
         print(f"  🧠 Total LLM Calls:  {total_llm}")
         print(f"  📡 LLM Stats:        {commander.get_stats()}")
+        print(f"  🧠 Memory Entries:   {commander.memory.get_stats()['long_term_entries']}")
     else:
         print("  No games completed.")
 

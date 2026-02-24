@@ -57,25 +57,18 @@ NEUTRAL_SAT_MAX = 15     # Very low saturation = gray
 # Minimum distinct pixels to count as a player color
 MIN_PLAYER_PIXELS = 100
 
-# ---- Radar Configuration ----
-RADAR_CENTER_X = 640      # Center of 1280-wide game view
-RADAR_CENTER_Y = 450      # Center of 900-tall game view (approx)
-RADAR_MAX_DISTANCE = 400  # Maximum ray length in pixels
-RADAR_STEP_SIZE = 5       # Pixels per step along each ray
-RADAR_COLOR_THRESHOLD = 1000  # Squared color diff to detect a border
+# ---- Grid Configuration (3x3 = 9 Zones) ----
+# The game area (1280x800 after cropping top/bottom UI) is split into a 3x3 grid.
+# Each zone is approximately 427x267 pixels.
+GRID_COLS = 3
+GRID_ROWS = 3
 
-# 8 compass directions: (name, angle_in_degrees)
-# Angles: 0°=East(right), 90°=South(down), 180°=West(left), 270°=North(up)
-RADAR_DIRECTIONS = [
-    ("North",      270),
-    ("North-East", 315),
-    ("East",         0),
-    ("South-East",  45),
-    ("South",       90),
-    ("South-West", 135),
-    ("West",       180),
-    ("North-West", 225),
-]
+# Zone names for human-readable output
+ZONE_NAMES = {
+    1: "Top-Left",    2: "Top-Center",    3: "Top-Right",
+    4: "Center-Left", 5: "Center",        6: "Center-Right",
+    7: "Bot-Left",    8: "Bot-Center",    9: "Bot-Right",
+}
 
 
 # ==============================================
@@ -87,7 +80,7 @@ class ScreenCapture:
     Processes Playwright browser screenshots for the AI system.
 
     Provides:
-    - Text Radar Report: 8-direction spatial scan for Nemotron LLM
+    - Grid Report: 3×3 zone spatial analysis for the LLM
     - Territory percentage estimation from blue-pixel analysis
     - Player count estimation from distinct hue clusters
     - Territory trend tracking across frames
@@ -95,7 +88,7 @@ class ScreenCapture:
     Usage:
         capture = ScreenCapture(page)
         frame = await capture.get_processed_frame()
-        radar  = frame["radar_text"]       # Nemotron reads this
+        grid   = frame["grid_text"]        # LLM reads this
         terr   = frame["territory_pct"]    # Our territory percentage
         players = frame["num_players"]     # Estimated player count
     """
@@ -118,11 +111,11 @@ class ScreenCapture:
 
         Returns:
             Dictionary with:
-                raw_image:     PIL Image — full browser screenshot
-                territory_pct: float — estimated player territory % (0.0–1.0)
-                num_players:   int — estimated number of distinct players
-                game_area:     PIL Image — cropped to game map only
-                radar_text:    str — 8-direction spatial report for Nemotron
+                raw_image:       PIL Image — full browser screenshot
+                territory_pct:   float — estimated player territory % (0.0–1.0)
+                num_players:     int — estimated number of distinct players
+                game_area:       PIL Image — cropped to game map only
+                grid_text:       str — 3×3 zone spatial report for the LLM
                 territory_trend: float — recent growth/shrink rate
         """
         self._frame_count += 1
@@ -142,8 +135,8 @@ class ScreenCapture:
         # Step 4: Estimate number of players from distinct colors
         num_players = self._estimate_players(game_area)
 
-        # Step 5: Generate the text radar report for Nemotron
-        radar_text = self.generate_radar_report(raw_image)
+        # Step 5: Generate the 3×3 grid report for the LLM
+        grid_text = self.generate_grid_report(raw_image)
 
         # Step 6: Calculate trend
         territory_trend = self.get_territory_trend()
@@ -153,89 +146,149 @@ class ScreenCapture:
             "territory_pct": territory_pct,
             "num_players": num_players,
             "game_area": game_area,
-            "radar_text": radar_text,
+            "grid_text": grid_text,
             "territory_trend": territory_trend,
         }
 
     # ==================================================
-    # RADAR REPORT — The Core Intelligence for Nemotron
+    # GRID REPORT — 3×3 Zone Analysis for the LLM
     # ==================================================
 
-    def generate_radar_report(self, image: Image.Image) -> str:
+    def generate_grid_report(self, image: Image.Image) -> str:
         """
-        Cast 8 directional rays from the screen center outward,
-        classify what each ray hits (Neutral, Enemy, Own, Ocean/Edge),
-        measure the distance, and return a single plain-English string
-        that Nemotron can reason over.
+        Divide the game screen into a 3×3 grid (9 zones) and analyze
+        the color composition of each zone.
 
-        The ray walks outward in RADAR_STEP_SIZE pixel increments.
-        When the squared RGB difference from the center pixel exceeds
-        RADAR_COLOR_THRESHOLD, a border is detected. The pixel at the
-        border is then classified via its HSV values.
+        For each zone, count Player (blue), Enemy (colored), Neutral (gray),
+        and Ocean/Edge pixels, then produce a plain-English summary.
+
+        Zone Layout:
+            1=Top-Left    2=Top-Center    3=Top-Right
+            4=Center-Left 5=Center        6=Center-Right
+            7=Bot-Left    8=Bot-Center    9=Bot-Right
 
         Args:
             image: Full-resolution PIL Image (raw browser screenshot)
 
         Returns:
             str like:
-            "North: Enemy (Very Close) | East: Neutral (Medium) | ..."
+            "Zone 1 (Top-Left): Mostly Neutral | Zone 2 (Top-Center): Heavy Enemy Presence | ..."
         """
-        pixels = np.array(image, dtype=np.int32)  # int32 avoids uint8 overflow in diff calc
+        pixels = np.array(image, dtype=np.float32)
         img_h, img_w = pixels.shape[:2]
 
-        cx = min(RADAR_CENTER_X, img_w - 1)
-        cy = min(RADAR_CENTER_Y, img_h - 1)
+        # Game area boundaries (crop UI bars)
+        y_min = GAME_AREA_TOP
+        y_max = min(GAME_AREA_BOTTOM, img_h)
+        x_min = GAME_AREA_LEFT
+        x_max = min(GAME_AREA_RIGHT, img_w)
 
-        # Reference color at exact center (our territory color)
-        player_color = pixels[cy, cx].astype(np.int32)
+        game_h = y_max - y_min
+        game_w = x_max - x_min
+
+        zone_h = game_h // GRID_ROWS
+        zone_w = game_w // GRID_COLS
 
         segments = []
 
-        for direction_name, angle_deg in RADAR_DIRECTIONS:
-            angle_rad = math.radians(angle_deg)
-            dx = math.cos(angle_rad)
-            dy = math.sin(angle_rad)
+        for zone_id in range(1, 10):
+            # Convert zone_id (1-9) to row, col (0-indexed)
+            row = (zone_id - 1) // GRID_COLS
+            col = (zone_id - 1) % GRID_COLS
 
-            hit_distance = RADAR_MAX_DISTANCE  # default if we reach max range
-            hit_color = None
-            hit_type = "Ocean/Edge"
+            # Pixel boundaries for this zone
+            zy_start = y_min + row * zone_h
+            zy_end = zy_start + zone_h
+            zx_start = x_min + col * zone_w
+            zx_end = zx_start + zone_w
 
-            # Walk the ray outward step by step
-            for step in range(1, (RADAR_MAX_DISTANCE // RADAR_STEP_SIZE) + 1):
-                px = int(cx + dx * step * RADAR_STEP_SIZE)
-                py = int(cy + dy * step * RADAR_STEP_SIZE)
+            # Clamp
+            zy_end = min(zy_end, img_h)
+            zx_end = min(zx_end, img_w)
 
-                # Bounds check — if we leave the screen, it's an edge
-                if px < 0 or px >= img_w or py < 0 or py >= img_h:
-                    hit_distance = step * RADAR_STEP_SIZE
-                    hit_type = "Ocean/Edge"
-                    break
+            # Extract zone pixels and downsample for speed
+            zone_pixels = pixels[zy_start:zy_end, zx_start:zx_end]
+            if zone_pixels.size == 0:
+                segments.append(f"Zone {zone_id} ({ZONE_NAMES[zone_id]}): Unknown")
+                continue
 
-                current_color = pixels[py, px].astype(np.int32)
+            # Downsample to ~32x32 for fast analysis
+            step_y = max(1, zone_pixels.shape[0] // 32)
+            step_x = max(1, zone_pixels.shape[1] // 32)
+            sampled = zone_pixels[::step_y, ::step_x]
 
-                # Squared color difference from center
-                diff = int(np.sum((current_color - player_color) ** 2))
+            # Classify every sampled pixel
+            counts = {"Own Territory": 0, "Neutral": 0, "Enemy": 0, "Ocean/Edge": 0}
+            for py in range(sampled.shape[0]):
+                for px in range(sampled.shape[1]):
+                    color = sampled[py, px].astype(np.int32)
+                    label = self._classify_pixel(color)
+                    counts[label] += 1
 
-                if diff > RADAR_COLOR_THRESHOLD:
-                    # Border detected! Record distance and classify.
-                    hit_distance = step * RADAR_STEP_SIZE
-                    hit_color = current_color
-                    break
+            total = sum(counts.values())
+            if total == 0:
+                segments.append(f"Zone {zone_id} ({ZONE_NAMES[zone_id]}): Unknown")
+                continue
 
-            # Classify what we hit
-            if hit_color is not None:
-                hit_type = self._classify_pixel(hit_color)
+            # Calculate percentages
+            pct_own = counts["Own Territory"] / total * 100
+            pct_neutral = counts["Neutral"] / total * 100
+            pct_enemy = counts["Enemy"] / total * 100
+            pct_ocean = counts["Ocean/Edge"] / total * 100
 
-            # Convert pixel distance to human-readable word
-            distance_label = self._distance_label(hit_distance)
-
-            # Build this direction's segment string
-            if hit_type == "Ocean/Edge":
-                segments.append(f"{direction_name}: Ocean/Edge")
-            else:
-                segments.append(f"{direction_name}: {hit_type} ({distance_label})")
+            # Generate human-readable description
+            desc = self._describe_zone(pct_own, pct_neutral, pct_enemy, pct_ocean)
+            segments.append(f"Zone {zone_id} ({ZONE_NAMES[zone_id]}): {desc}")
 
         return " | ".join(segments)
+
+    @staticmethod
+    def _describe_zone(pct_own: float, pct_neutral: float, pct_enemy: float, pct_ocean: float) -> str:
+        """
+        Produce a concise plain-English description of a zone's composition.
+
+        Args:
+            pct_own:     % of zone that is our territory
+            pct_neutral: % that is neutral gray land
+            pct_enemy:   % that is enemy colored territory
+            pct_ocean:   % that is ocean/edge/UI
+
+        Returns:
+            Description string like "Mostly Neutral" or "Heavy Enemy Presence"
+        """
+        # Dominant content
+        if pct_own > 60:
+            return "Our Territory (Safe)"
+        if pct_ocean > 70:
+            return "Ocean/Edge (Blocked)"
+        if pct_neutral > 50:
+            if pct_enemy > 15:
+                return "Mostly Neutral, Some Enemy"
+            return "Mostly Neutral (Free Land)"
+        if pct_enemy > 50:
+            return "Heavy Enemy Presence (Dangerous)"
+        if pct_enemy > 25:
+            if pct_neutral > 25:
+                return "Mixed Enemy + Neutral"
+            return "Enemy Territory (Risky)"
+        if pct_own > 30:
+            if pct_neutral > 20:
+                return "Our Border + Neutral (Expand Here)"
+            if pct_enemy > 15:
+                return "Our Border + Enemy (Defend)"
+            return "Our Territory Edge"
+
+        # Fallback
+        parts = []
+        if pct_neutral > 20:
+            parts.append(f"Neutral {pct_neutral:.0f}%")
+        if pct_enemy > 10:
+            parts.append(f"Enemy {pct_enemy:.0f}%")
+        if pct_own > 10:
+            parts.append(f"Ours {pct_own:.0f}%")
+        if pct_ocean > 20:
+            parts.append(f"Ocean {pct_ocean:.0f}%")
+        return ", ".join(parts) if parts else "Mixed"
 
     @staticmethod
     def _classify_pixel(color: np.ndarray) -> str:
@@ -280,27 +333,56 @@ class ScreenCapture:
         return "Ocean/Edge"
 
     @staticmethod
-    def _distance_label(distance_px: int) -> str:
+    def get_zone_center(zone_id: int) -> tuple:
         """
-        Convert a pixel distance into a Nemotron-friendly word.
+        Get the pixel coordinates of the center of a zone (1-9).
 
-        Thresholds are tuned for 1280x900 game view:
-            < 50px  → Very Close  (immediate border, attack NOW)
-            < 150px → Medium      (within comfortable reach)
-            >= 150px → Far        (long march, consider economy first)
+        Useful for game_environment.py to know where to scan
+        when the LLM says "attack Zone X".
 
         Args:
-            distance_px: Distance in pixels from screen center
+            zone_id: Zone number 1-9
 
         Returns:
-            "Very Close", "Medium", or "Far"
+            (center_x, center_y) in full-image pixel coordinates
         """
-        if distance_px < 50:
-            return "Very Close"
-        elif distance_px < 150:
-            return "Medium"
-        else:
-            return "Far"
+        zone_id = max(1, min(9, zone_id))
+        row = (zone_id - 1) // GRID_COLS
+        col = (zone_id - 1) % GRID_COLS
+
+        game_h = GAME_AREA_BOTTOM - GAME_AREA_TOP
+        game_w = GAME_AREA_RIGHT - GAME_AREA_LEFT
+        zone_h = game_h // GRID_ROWS
+        zone_w = game_w // GRID_COLS
+
+        cx = GAME_AREA_LEFT + col * zone_w + zone_w // 2
+        cy = GAME_AREA_TOP + row * zone_h + zone_h // 2
+
+        return (cx, cy)
+
+    @staticmethod
+    def get_zone_bounds(zone_id: int) -> tuple:
+        """
+        Get the pixel boundaries of a zone (1-9).
+
+        Returns:
+            (x_start, y_start, x_end, y_end) in full-image pixel coords
+        """
+        zone_id = max(1, min(9, zone_id))
+        row = (zone_id - 1) // GRID_COLS
+        col = (zone_id - 1) % GRID_COLS
+
+        game_h = GAME_AREA_BOTTOM - GAME_AREA_TOP
+        game_w = GAME_AREA_RIGHT - GAME_AREA_LEFT
+        zone_h = game_h // GRID_ROWS
+        zone_w = game_w // GRID_COLS
+
+        x_start = GAME_AREA_LEFT + col * zone_w
+        y_start = GAME_AREA_TOP + row * zone_h
+        x_end = x_start + zone_w
+        y_end = y_start + zone_h
+
+        return (x_start, y_start, x_end, y_end)
 
     # ==================================================
     # TERRITORY & PLAYER ESTIMATION (Unchanged Logic)
@@ -459,32 +541,32 @@ def estimate_territory_from_image(image: Image.Image) -> float:
 # ==============================================
 
 def demo():
-    """Quick demo with a synthetic test image showing radar output."""
-    print("\n📸 Screen Capture Demo — Text Radar Edition")
+    """Quick demo with a synthetic test image showing grid output."""
+    print("\n📸 Screen Capture Demo — Grid Vision Edition")
     print("=" * 55)
 
     # Create a 1280x900 test image: gray background = neutral land
     test_img = Image.new("RGB", (1280, 900), (180, 180, 180))
     px = test_img.load()
 
-    # Blue region at center = our territory
-    for x in range(540, 740):
-        for y in range(350, 550):
+    # Blue region at center (Zone 5) = our territory
+    for x in range(480, 800):
+        for y in range(300, 600):
             px[x, y] = (30, 80, 200)
 
-    # Red enemy to the East
-    for x in range(800, 1000):
-        for y in range(350, 550):
+    # Red enemy to the right (Zone 6) 
+    for x in range(860, 1200):
+        for y in range(300, 600):
             px[x, y] = (200, 40, 40)
 
-    # Green enemy to the South
-    for x in range(540, 740):
-        for y in range(600, 750):
+    # Green enemy bottom-center (Zone 8)
+    for x in range(480, 800):
+        for y in range(620, 830):
             px[x, y] = (40, 180, 60)
 
-    # Dark ocean in the North
+    # Dark ocean top row (Zone 1, 2, 3)
     for x in range(0, 1280):
-        for y in range(0, 100):
+        for y in range(0, 80):
             px[x, y] = (10, 15, 30)
 
     # Process
@@ -496,15 +578,21 @@ def demo():
     game_area = capture._crop_game_area(test_img)
     territory = capture._estimate_territory(game_area)
     players = capture._estimate_players(game_area)
-    radar = capture.generate_radar_report(test_img)
+    grid = capture.generate_grid_report(test_img)
 
     print(f"  🖼️  Test image size: {test_img.size}")
     print(f"  🎮 Game area size:  {game_area.size}")
     print(f"  🗺️  Territory:       {territory:.2%}")
     print(f"  👥 Players:         {players}")
-    print(f"\n  📡 RADAR REPORT:")
-    for segment in radar.split(" | "):
+    print(f"\n  📡 GRID REPORT:")
+    for segment in grid.split(" | "):
         print(f"     → {segment}")
+
+    # Test zone coordinate helpers
+    print(f"\n  📍 Zone Centers:")
+    for z in range(1, 10):
+        cx, cy = ScreenCapture.get_zone_center(z)
+        print(f"     Zone {z} ({ZONE_NAMES[z]}): ({cx}, {cy})")
 
     print("\n✅ Demo complete!")
 
