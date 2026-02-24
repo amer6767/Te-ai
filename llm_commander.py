@@ -38,9 +38,9 @@ from memory_system import MemorySystem
 
 # Pre-quantized 4-bit models — download in seconds, fit 16GB VRAM
 MODEL_CANDIDATES = [
-    "unsloth/DeepSeek-R1-Distill-Llama-8B-bnb-4bit",  # Best reasoning (R1 distill)
+    "unsloth/Qwen2.5-7B-Instruct-bnb-4bit",           # Best agent model (follows format)
     "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",    # Strong alternative
-    "unsloth/Qwen2.5-7B-Instruct-bnb-4bit",           # Another solid option
+    "unsloth/DeepSeek-R1-Distill-Llama-8B-bnb-4bit",  # Thinks out loud (bad for commands)
 ]
 
 DEFAULT_MODEL_ID = MODEL_CANDIDATES[0]

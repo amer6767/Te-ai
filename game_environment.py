@@ -610,7 +610,7 @@ class TerritorialEnvironment:
         # ============================================
         screenshot = await self.get_screenshot()
         
-        if self.step_count % 6 == 0:
+        if self.step_count % 3 == 0:
             try:
                 screenshot.save("live_view.png")
             except Exception:
