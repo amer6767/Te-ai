@@ -3,14 +3,15 @@
 screen_capture.py — Browser Screenshot Processing for Territorial.io AI
 =============================================================================
 
-Processes raw browser screenshots into usable data:
-- Tensors for the CNN (brain.py)
-- Territory percentage estimates from color analysis
-- Player count estimates from distinct colors
-- Cropped game area with browser UI removed
+Processes raw browser screenshots into usable data for Nemotron LLM:
+  - Text-based Radar Report (8-direction raycast scan)
+  - Territory percentage estimates from color analysis
+  - Player count estimates from distinct colors
+  - Cropped game area with browser UI removed
+  - Territory trend tracking for momentum analysis
 
-This replaces all random.uniform and random.randint placeholders in
-trainer.py _score_move with real values from get_processed_frame().
+The radar report replaces CNN tensors — Nemotron reads a plain-English
+spatial description instead of processing pixel arrays.
 
 =============================================================================
 """
@@ -21,8 +22,7 @@ trainer.py _score_move with real values from get_processed_frame().
 
 from PIL import Image
 import numpy as np
-import torch
-import torchvision.transforms as T
+import math
 import io
 import colorsys
 from collections import Counter
@@ -38,12 +38,7 @@ except ImportError:
 # CONFIGURATION
 # ==============================================
 
-# CNN input size matching brain.py Config
-CNN_INPUT_WIDTH = 128
-CNN_INPUT_HEIGHT = 128
-
 # Game area boundaries (approximate, browser UI removed)
-# These define the rectangular region of the actual game map
 GAME_AREA_LEFT = 0
 GAME_AREA_TOP = 50       # Remove top browser/game bar
 GAME_AREA_RIGHT = 1280
@@ -57,18 +52,30 @@ PLAYER_SAT_MIN = 40      # Minimum saturation (percentage)
 PLAYER_VAL_MIN = 40      # Minimum value/brightness (percentage)
 
 # Neutral territory (unclaimed) is typically gray
-NEUTRAL_HUE_MIN = 0
 NEUTRAL_SAT_MAX = 15     # Very low saturation = gray
 
 # Minimum distinct pixels to count as a player color
 MIN_PLAYER_PIXELS = 100
 
-# Image preprocessing pipeline matching brain.py GamePreprocessor
-TRANSFORM = T.Compose([
-    T.Resize((CNN_INPUT_HEIGHT, CNN_INPUT_WIDTH)),
-    T.ToTensor(),
-    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+# ---- Radar Configuration ----
+RADAR_CENTER_X = 640      # Center of 1280-wide game view
+RADAR_CENTER_Y = 450      # Center of 900-tall game view (approx)
+RADAR_MAX_DISTANCE = 400  # Maximum ray length in pixels
+RADAR_STEP_SIZE = 5       # Pixels per step along each ray
+RADAR_COLOR_THRESHOLD = 1000  # Squared color diff to detect a border
+
+# 8 compass directions: (name, angle_in_degrees)
+# Angles: 0°=East(right), 90°=South(down), 180°=West(left), 270°=North(up)
+RADAR_DIRECTIONS = [
+    ("North",      270),
+    ("North-East", 315),
+    ("East",         0),
+    ("South-East",  45),
+    ("South",       90),
+    ("South-West", 135),
+    ("West",       180),
+    ("North-West", 225),
+]
 
 
 # ==============================================
@@ -78,25 +85,25 @@ TRANSFORM = T.Compose([
 class ScreenCapture:
     """
     Processes Playwright browser screenshots for the AI system.
-    
+
     Provides:
-    - Processed frames with tensor, territory %, player count
-    - Game area cropping to remove browser UI
-    - Color-based territory estimation
-    - Player count estimation from distinct territory colors
-    
+    - Text Radar Report: 8-direction spatial scan for Nemotron LLM
+    - Territory percentage estimation from blue-pixel analysis
+    - Player count estimation from distinct hue clusters
+    - Territory trend tracking across frames
+
     Usage:
         capture = ScreenCapture(page)
         frame = await capture.get_processed_frame()
-        tensor = frame["tensor"]           # Ready for brain.py CNN
-        territory = frame["territory_pct"] # Our territory percentage
+        radar  = frame["radar_text"]       # Nemotron reads this
+        terr   = frame["territory_pct"]    # Our territory percentage
         players = frame["num_players"]     # Estimated player count
     """
 
     def __init__(self, page):
         """
         Initialize with a Playwright page instance.
-        
+
         Args:
             page: Playwright Page object for taking screenshots
         """
@@ -108,15 +115,15 @@ class ScreenCapture:
     async def get_processed_frame(self) -> dict:
         """
         Capture and process the current browser screenshot.
-        
+
         Returns:
             Dictionary with:
                 raw_image:     PIL Image — full browser screenshot
-                tensor:        torch.Tensor — 128x128 processed for brain.py CNN
-                territory_pct: float — estimated player territory percentage (0.0–1.0)
+                territory_pct: float — estimated player territory % (0.0–1.0)
                 num_players:   int — estimated number of distinct players
                 game_area:     PIL Image — cropped to game map only
-                smart_targets: list — valid (x, y) click targets from border analysis
+                radar_text:    str — 8-direction spatial report for Nemotron
+                territory_trend: float — recent growth/shrink rate
         """
         self._frame_count += 1
 
@@ -127,122 +134,268 @@ class ScreenCapture:
         # Step 2: Crop to game area (remove browser chrome)
         game_area = self._crop_game_area(raw_image)
 
-        # Step 3: Convert to tensor for CNN
-        tensor = TRANSFORM(game_area).unsqueeze(0)  # Add batch dimension [1, 3, 128, 128]
-
-        # Step 4: Estimate territory from color analysis
+        # Step 3: Estimate territory from color analysis
         territory_pct = self._estimate_territory(game_area)
         self._last_territory = territory_pct
         self._territory_history.append(territory_pct)
 
-        # Step 5: Estimate number of players from distinct colors
+        # Step 4: Estimate number of players from distinct colors
         num_players = self._estimate_players(game_area)
 
-        # Step 6: Find smart click targets (neutral + enemy borders)
-        smart_targets = self.get_smart_click_targets(game_area)
+        # Step 5: Generate the text radar report for Nemotron
+        radar_text = self.generate_radar_report(raw_image)
+
+        # Step 6: Calculate trend
+        territory_trend = self.get_territory_trend()
 
         return {
             "raw_image": raw_image,
-            "tensor": tensor,
             "territory_pct": territory_pct,
             "num_players": num_players,
             "game_area": game_area,
-            "smart_targets": smart_targets,
+            "radar_text": radar_text,
+            "territory_trend": territory_trend,
         }
+
+    # ==================================================
+    # RADAR REPORT — The Core Intelligence for Nemotron
+    # ==================================================
+
+    def generate_radar_report(self, image: Image.Image) -> str:
+        """
+        Cast 8 directional rays from the screen center outward,
+        classify what each ray hits (Neutral, Enemy, Own, Ocean/Edge),
+        measure the distance, and return a single plain-English string
+        that Nemotron can reason over.
+
+        The ray walks outward in RADAR_STEP_SIZE pixel increments.
+        When the squared RGB difference from the center pixel exceeds
+        RADAR_COLOR_THRESHOLD, a border is detected. The pixel at the
+        border is then classified via its HSV values.
+
+        Args:
+            image: Full-resolution PIL Image (raw browser screenshot)
+
+        Returns:
+            str like:
+            "North: Enemy (Very Close) | East: Neutral (Medium) | ..."
+        """
+        pixels = np.array(image, dtype=np.int32)  # int32 avoids uint8 overflow in diff calc
+        img_h, img_w = pixels.shape[:2]
+
+        cx = min(RADAR_CENTER_X, img_w - 1)
+        cy = min(RADAR_CENTER_Y, img_h - 1)
+
+        # Reference color at exact center (our territory color)
+        player_color = pixels[cy, cx].astype(np.int32)
+
+        segments = []
+
+        for direction_name, angle_deg in RADAR_DIRECTIONS:
+            angle_rad = math.radians(angle_deg)
+            dx = math.cos(angle_rad)
+            dy = math.sin(angle_rad)
+
+            hit_distance = RADAR_MAX_DISTANCE  # default if we reach max range
+            hit_color = None
+            hit_type = "Ocean/Edge"
+
+            # Walk the ray outward step by step
+            for step in range(1, (RADAR_MAX_DISTANCE // RADAR_STEP_SIZE) + 1):
+                px = int(cx + dx * step * RADAR_STEP_SIZE)
+                py = int(cy + dy * step * RADAR_STEP_SIZE)
+
+                # Bounds check — if we leave the screen, it's an edge
+                if px < 0 or px >= img_w or py < 0 or py >= img_h:
+                    hit_distance = step * RADAR_STEP_SIZE
+                    hit_type = "Ocean/Edge"
+                    break
+
+                current_color = pixels[py, px].astype(np.int32)
+
+                # Squared color difference from center
+                diff = int(np.sum((current_color - player_color) ** 2))
+
+                if diff > RADAR_COLOR_THRESHOLD:
+                    # Border detected! Record distance and classify.
+                    hit_distance = step * RADAR_STEP_SIZE
+                    hit_color = current_color
+                    break
+
+            # Classify what we hit
+            if hit_color is not None:
+                hit_type = self._classify_pixel(hit_color)
+
+            # Convert pixel distance to human-readable word
+            distance_label = self._distance_label(hit_distance)
+
+            # Build this direction's segment string
+            if hit_type == "Ocean/Edge":
+                segments.append(f"{direction_name}: Ocean/Edge")
+            else:
+                segments.append(f"{direction_name}: {hit_type} ({distance_label})")
+
+        return " | ".join(segments)
+
+    @staticmethod
+    def _classify_pixel(color: np.ndarray) -> str:
+        """
+        Classify a single pixel's RGB color into a game-meaningful label
+        using HSV analysis.
+
+        Classification Rules (Territorial.io specific):
+            Own Territory:   Hue 200-260°, Sat >= 40%, Val >= 40%
+            Neutral Land:    Sat < 15%, Val between 16-94%  (gray tones)
+            Enemy Land:      Sat >= 20%, Val >= 20%  (vivid non-blue)
+            Ocean/Edge:      Everything else (very dark, very bright, etc.)
+
+        Args:
+            color: numpy array [R, G, B] (int32)
+
+        Returns:
+            One of: "Own Territory", "Neutral", "Enemy", "Ocean/Edge"
+        """
+        r, g, b = int(color[0]), int(color[1]), int(color[2])
+        h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+
+        h_deg = h * 360
+        s_pct = s * 100
+        v_pct = v * 100
+
+        # Check for our own territory first (blue)
+        if (PLAYER_HUE_MIN <= h_deg <= PLAYER_HUE_MAX
+                and s_pct >= PLAYER_SAT_MIN
+                and v_pct >= PLAYER_VAL_MIN):
+            return "Own Territory"
+
+        # Neutral land: low saturation, mid-range brightness (gray)
+        if s_pct < 15 and 16 <= v_pct <= 94:
+            return "Neutral"
+
+        # Enemy land: saturated and visible (colored territory)
+        if s_pct >= 20 and v_pct >= 20:
+            return "Enemy"
+
+        # Everything else: ocean, mountains, map edge, UI elements
+        return "Ocean/Edge"
+
+    @staticmethod
+    def _distance_label(distance_px: int) -> str:
+        """
+        Convert a pixel distance into a Nemotron-friendly word.
+
+        Thresholds are tuned for 1280x900 game view:
+            < 50px  → Very Close  (immediate border, attack NOW)
+            < 150px → Medium      (within comfortable reach)
+            >= 150px → Far        (long march, consider economy first)
+
+        Args:
+            distance_px: Distance in pixels from screen center
+
+        Returns:
+            "Very Close", "Medium", or "Far"
+        """
+        if distance_px < 50:
+            return "Very Close"
+        elif distance_px < 150:
+            return "Medium"
+        else:
+            return "Far"
+
+    # ==================================================
+    # TERRITORY & PLAYER ESTIMATION (Unchanged Logic)
+    # ==================================================
 
     def _crop_game_area(self, image: Image.Image) -> Image.Image:
         """
         Crop the screenshot to the game map region, removing browser
         chrome, title bars, and game UI elements.
-        
+
         Args:
             image: Full browser screenshot as PIL Image
-            
+
         Returns:
             Cropped PIL Image containing only the game map
         """
         width, height = image.size
 
-        # Calculate crop boundaries, clamped to image dimensions
         left = min(GAME_AREA_LEFT, width)
         top = min(GAME_AREA_TOP, height)
         right = min(GAME_AREA_RIGHT, width)
         bottom = min(GAME_AREA_BOTTOM, height)
 
-        # Ensure valid crop region
         if right <= left or bottom <= top:
             return image  # Return uncropped if boundaries are invalid
 
-        cropped = image.crop((left, top, right, bottom))
-        return cropped
+        return image.crop((left, top, right, bottom))
 
     def _estimate_territory(self, image: Image.Image) -> float:
         """
         Estimate the player's territory percentage by analyzing blue
         color coverage in the game screenshot.
-        
-        Territorial.io uses blue for the local player's territory.
-        We count blue pixels vs total game area pixels.
-        
+
+        Uses vectorized numpy HSV conversion for performance instead
+        of per-pixel Python loops.
+
         Args:
             image: Cropped game area PIL Image
-            
+
         Returns:
             Float from 0.0 to 1.0 representing estimated territory %
         """
-        # Downsample for speed (analysis doesn't need full resolution)
+        # Downsample for speed
         small = image.resize((128, 128), Image.BILINEAR)
-        pixels = np.array(small)
+        pixels = np.array(small, dtype=np.float32) / 255.0
 
         total_pixels = pixels.shape[0] * pixels.shape[1]
         if total_pixels == 0:
             return 0.0
 
-        # Convert RGB to HSV for better color detection
-        blue_count = 0
-        for row in range(0, pixels.shape[0], 2):  # Skip every other row for speed
-            for col in range(0, pixels.shape[1], 2):
-                r, g, b = pixels[row, col]
-                # Convert to HSV
-                h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-                h_deg = h * 360
-                s_pct = s * 100
-                v_pct = v * 100
+        # Vectorized HSV conversion using numpy
+        r, g, b = pixels[:, :, 0], pixels[:, :, 1], pixels[:, :, 2]
+        cmax = np.maximum(np.maximum(r, g), b)
+        cmin = np.minimum(np.minimum(r, g), b)
+        delta = cmax - cmin
 
-                # Check if pixel is in player's blue range
-                if (PLAYER_HUE_MIN <= h_deg <= PLAYER_HUE_MAX and
-                        s_pct >= PLAYER_SAT_MIN and
-                        v_pct >= PLAYER_VAL_MIN):
-                    blue_count += 1
+        # Hue calculation (degrees)
+        hue = np.zeros_like(cmax)
+        mask_r = (cmax == r) & (delta > 0)
+        mask_g = (cmax == g) & (delta > 0)
+        mask_b = (cmax == b) & (delta > 0)
+        hue[mask_r] = 60 * (((g[mask_r] - b[mask_r]) / delta[mask_r]) % 6)
+        hue[mask_g] = 60 * (((b[mask_g] - r[mask_g]) / delta[mask_g]) + 2)
+        hue[mask_b] = 60 * (((r[mask_b] - g[mask_b]) / delta[mask_b]) + 4)
 
-        # We sampled every other pixel in both dimensions = 1/4 of pixels
-        sampled_pixels = (pixels.shape[0] // 2) * (pixels.shape[1] // 2)
-        if sampled_pixels == 0:
-            return 0.0
+        # Saturation (percentage)
+        sat = np.where(cmax > 0, (delta / cmax) * 100, 0)
 
-        territory_pct = blue_count / sampled_pixels
-        # Clamp to valid range
+        # Value (percentage)
+        val = cmax * 100
+
+        # Count blue territory pixels
+        blue_mask = (
+            (hue >= PLAYER_HUE_MIN) & (hue <= PLAYER_HUE_MAX)
+            & (sat >= PLAYER_SAT_MIN)
+            & (val >= PLAYER_VAL_MIN)
+        )
+
+        territory_pct = float(np.sum(blue_mask)) / total_pixels
         return max(0.0, min(1.0, territory_pct))
 
     def _estimate_players(self, image: Image.Image) -> int:
         """
-        Estimate the number of active players by counting distinct
-        territory colors in the screenshot.
-        
-        Each player in Territorial.io has a unique color. We bucket
-        pixel hues and count how many distinct hue clusters exist.
-        
+        Estimate active player count by counting distinct territory
+        colors (hue clusters) in the screenshot.
+
         Args:
             image: Cropped game area PIL Image
-            
+
         Returns:
             Integer count of estimated active players (minimum 1)
         """
-        # Downsample heavily for clustering speed
         small = image.resize((64, 64), Image.BILINEAR)
         pixels = np.array(small)
 
-        # Bin pixels by hue (30-degree buckets = 12 bins)
         hue_bins = Counter()
         for row in range(pixels.shape[0]):
             for col in range(pixels.shape[1]):
@@ -251,30 +404,23 @@ class ScreenCapture:
                 s_pct = s * 100
                 v_pct = v * 100
 
-                # Skip near-white, near-black, and low-saturation (neutral/water)
+                # Skip near-white, near-black, low-sat (neutral/water)
                 if s_pct < 15 or v_pct < 15 or v_pct > 95:
                     continue
 
-                # Bucket hue into 30-degree bins
-                hue_bin = int(h * 12)  # 0-11
+                hue_bin = int(h * 12)  # 30° buckets → 0-11
                 hue_bins[hue_bin] += 1
 
-        # Count bins with significant pixel counts as distinct players
-        player_count = 0
-        for hue_bin, count in hue_bins.items():
-            if count >= MIN_PLAYER_PIXELS:
-                player_count += 1
-
-        # At least 1 player (us)
+        player_count = sum(1 for count in hue_bins.values() if count >= MIN_PLAYER_PIXELS)
         return max(1, player_count)
 
     def get_territory_trend(self, window: int = 10) -> float:
         """
         Get the recent territory trend (positive = growing, negative = shrinking).
-        
+
         Args:
             window: Number of recent frames to analyze
-            
+
         Returns:
             Float indicating territory change rate
         """
@@ -287,133 +433,61 @@ class ScreenCapture:
 
         return recent[-1] - recent[0]
 
-    def get_smart_click_targets(self, image: Image.Image) -> list:
-        """
-        Find valid click targets by detecting borders between our
-        territory and neutral/enemy land.
-        
-        Args:
-            image: Cropped game area PIL Image
-            
-        Returns:
-            List of (x, y) pixel coordinates in GAME AREA space,
-            sorted by priority (closest to center first)
-        """
-        # Downsample for speed
-        small = image.resize((80, 56), Image.BILINEAR)
-        pixels = np.array(small)
-        h, w, _ = pixels.shape
-        
-        # Get original dimensions for scaling
-        orig_w, orig_h = image.size
-        scale_x = orig_w / w
-        scale_y = orig_h / h
-        
-        # Classify pixels
-        is_player = np.zeros((h, w), dtype=bool)
-        is_target = np.zeros((h, w), dtype=bool)  # neutral or enemy
-        
-        for row in range(h):
-            for col in range(w):
-                r, g, b = pixels[row, col]
-                hue, sat, val = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-                h_deg = hue * 360
-                s_pct = sat * 100
-                v_pct = val * 100
-                
-                # Our blue territory
-                if (PLAYER_HUE_MIN <= h_deg <= PLAYER_HUE_MAX and
-                        s_pct >= PLAYER_SAT_MIN and v_pct >= 30):
-                    is_player[row, col] = True
-                # Neutral (gray) or enemy (colored)
-                elif (s_pct < 15 and 40 < v_pct < 240) or (s_pct >= 20 and v_pct >= 20):
-                    is_target[row, col] = True
-        
-        # Find border pixels: target pixels adjacent to our territory
-        targets = []
-        for row in range(1, h - 1):
-            for col in range(1, w - 1):
-                if not is_target[row, col]:
-                    continue
-                neighbors = [
-                    is_player[row-1, col], is_player[row+1, col],
-                    is_player[row, col-1], is_player[row, col+1],
-                ]
-                if any(neighbors):
-                    px = int(col * scale_x + GAME_AREA_LEFT)
-                    py = int(row * scale_y + GAME_AREA_TOP)
-                    targets.append((px, py))
-        
-        # Sort by distance to center (prioritize nearby targets)
-        cx = orig_w // 2 + GAME_AREA_LEFT
-        cy = orig_h // 2 + GAME_AREA_TOP
-        targets.sort(key=lambda t: abs(t[0] - cx) + abs(t[1] - cy))
-        
-        return targets
-
 
 # ==============================================
-# UTILITY FUNCTIONS
+# STANDALONE UTILITY
 # ==============================================
-
-def process_pil_to_tensor(image: Image.Image) -> torch.Tensor:
-    """
-    Convert a PIL Image to a tensor ready for brain.py's CNN.
-    Standalone utility function for use outside the class.
-    
-    Args:
-        image: PIL Image (any size)
-        
-    Returns:
-        Tensor of shape [1, 3, 128, 128]
-    """
-    return TRANSFORM(image).unsqueeze(0)
-
 
 def estimate_territory_from_image(image: Image.Image) -> float:
     """
     Standalone territory estimation from a PIL Image.
     Useful for processing saved screenshots.
-    
+
     Args:
         image: PIL Image of the game
-        
+
     Returns:
         Float from 0.0 to 1.0
     """
     capture = ScreenCapture.__new__(ScreenCapture)
+    capture._territory_history = []
     return capture._estimate_territory(image)
 
 
 # ==============================================
-# DEMO
+# DEMO — Verify radar logic visually
 # ==============================================
 
 def demo():
-    """Quick demo with a synthetic test image."""
-    print("\n📸 Screen Capture Demo")
-    print("=" * 50)
+    """Quick demo with a synthetic test image showing radar output."""
+    print("\n📸 Screen Capture Demo — Text Radar Edition")
+    print("=" * 55)
 
-    # Create a test image with some blue territory
-    test_img = Image.new("RGB", (1280, 900), (200, 200, 200))
-    pixels = test_img.load()
+    # Create a 1280x900 test image: gray background = neutral land
+    test_img = Image.new("RGB", (1280, 900), (180, 180, 180))
+    px = test_img.load()
 
-    # Add a blue region (player territory)
-    for x in range(200, 500):
-        for y in range(200, 400):
-            pixels[x, y] = (30, 80, 200)  # Blue
+    # Blue region at center = our territory
+    for x in range(540, 740):
+        for y in range(350, 550):
+            px[x, y] = (30, 80, 200)
 
-    # Add a red region (enemy territory)
-    for x in range(600, 800):
-        for y in range(300, 500):
-            pixels[x, y] = (200, 40, 40)  # Red
+    # Red enemy to the East
+    for x in range(800, 1000):
+        for y in range(350, 550):
+            px[x, y] = (200, 40, 40)
 
-    # Add a green region (another enemy)
-    for x in range(400, 550):
-        for y in range(500, 650):
-            pixels[x, y] = (40, 180, 60)  # Green
+    # Green enemy to the South
+    for x in range(540, 740):
+        for y in range(600, 750):
+            px[x, y] = (40, 180, 60)
 
-    # Process the test image
+    # Dark ocean in the North
+    for x in range(0, 1280):
+        for y in range(0, 100):
+            px[x, y] = (10, 15, 30)
+
+    # Process
     capture = ScreenCapture.__new__(ScreenCapture)
     capture._frame_count = 0
     capture._last_territory = 0.0
@@ -422,14 +496,15 @@ def demo():
     game_area = capture._crop_game_area(test_img)
     territory = capture._estimate_territory(game_area)
     players = capture._estimate_players(game_area)
-
-    tensor = process_pil_to_tensor(game_area)
+    radar = capture.generate_radar_report(test_img)
 
     print(f"  🖼️  Test image size: {test_img.size}")
-    print(f"  🎮 Game area size: {game_area.size}")
-    print(f"  🧠 Tensor shape: {tensor.shape}")
-    print(f"  🗺️  Estimated territory: {territory:.2%}")
-    print(f"  👥 Estimated players: {players}")
+    print(f"  🎮 Game area size:  {game_area.size}")
+    print(f"  🗺️  Territory:       {territory:.2%}")
+    print(f"  👥 Players:         {players}")
+    print(f"\n  📡 RADAR REPORT:")
+    for segment in radar.split(" | "):
+        print(f"     → {segment}")
 
     print("\n✅ Demo complete!")
 
