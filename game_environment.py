@@ -223,6 +223,68 @@ class SmartTargeting:
         # Fallback (should rarely happen): just click nearby
         return (cx + random.randint(-30, 30), cy + random.randint(-30, 30))
 
+    # --- Direction name → angle lookup ---
+    DIRECTION_ANGLES = {
+        "north": 270, "north-east": 315, "east": 0, "south-east": 45,
+        "south": 90, "south-west": 135, "west": 180, "north-west": 225,
+    }
+
+    @staticmethod
+    def get_target_in_direction(image: Image.Image, direction_name: str) -> tuple:
+        """
+        Shoot a SINGLE ray in the specified compass direction and return
+        the (x, y) click coordinate just past the border.
+
+        This is the bridge between the LLM Commander's text output
+        ("North") and an actual pixel the Playwright can click.
+
+        Args:
+            image:          PIL Image of the game (1280x900)
+            direction_name: One of "north", "north-east", "east", etc.
+
+        Returns:
+            (pixel_x, pixel_y) — the spot to click, 15px past the border
+        """
+        direction_name = direction_name.strip().lower()
+
+        # Validate direction
+        if direction_name not in SmartTargeting.DIRECTION_ANGLES:
+            # Unknown direction → fall back to best available target
+            return SmartTargeting.get_best_target(image)
+
+        angle_deg = SmartTargeting.DIRECTION_ANGLES[direction_name]
+        rad = math.radians(angle_deg)
+
+        pixels = np.array(image)
+        cx, cy = VIEWPORT_W // 2, VIEWPORT_H // 2
+
+        # Memorize our color at dead center
+        player_color = pixels[cy, cx].astype(int)
+
+        # Walk outward along this single ray
+        for dist in range(5, 400, 5):
+            x = int(cx + math.cos(rad) * dist)
+            y = int(cy + math.sin(rad) * dist)
+
+            # Bounds check — stop at UI bars / screen edges
+            if y < 50 or y > 850 or x < 10 or x > 1270:
+                break
+
+            current_color = pixels[y, x].astype(int)
+            color_diff = sum((current_color - player_color) ** 2)
+
+            if color_diff > 1000:
+                # Border found! Click 15px past it
+                click_x = int(cx + math.cos(rad) * (dist + 15))
+                click_y = int(cy + math.sin(rad) * (dist + 15))
+                # Clamp to safe screen region
+                click_x = max(10, min(1270, click_x))
+                click_y = max(50, min(850, click_y))
+                return (click_x, click_y)
+
+        # No border found in this direction — fall back to best target
+        return SmartTargeting.get_best_target(image)
+
 
 # ==============================================
 # TERRITORIAL ENVIRONMENT CLASS (v2)
